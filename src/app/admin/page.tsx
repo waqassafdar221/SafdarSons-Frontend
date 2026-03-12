@@ -9,6 +9,37 @@ import type {
   RequestStatus,
 } from "@/lib/api";
 
+// ─── Browser Notification Helpers ─────────────────────────────────────────────
+function requestNotificationPermission() {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function showBrowserNotification(
+  title: string,
+  body: string,
+  tag?: string
+) {
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window) ||
+    Notification.permission !== "granted"
+  )
+    return;
+  try {
+    new Notification(title, {
+      body,
+      icon: "/images/logo.png",
+      badge: "/images/logo.png",
+      tag: tag ?? "safdar-pharma",
+    });
+  } catch {
+    // Safari / older browsers may throw
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const STATUS_META: Record<
   RequestStatus | "all",
@@ -673,6 +704,81 @@ export default function AdminPage() {
   const [deleteRequest, setDeleteRequest] = useState<MedicineRequest | null>(null);
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const initialLoadDone = useRef(false);
+
+  // ─── Request notification permission on mount ──────────────────────────────
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  // ─── Real-time Firestore subscription ──────────────────────────────────────
+  useEffect(() => {
+    const unsub = api.subscribeToRequests((allRequests) => {
+      // Detect NEW requests (ones we haven't seen before)
+      if (initialLoadDone.current) {
+        for (const req of allRequests) {
+          if (!knownIdsRef.current.has(req.id)) {
+            showBrowserNotification(
+              "🆕 New Medicine Request",
+              `${req.customerName} requested ${req.medicineName} (Qty: ${req.quantity}) from ${req.supplierName}`,
+              `new-req-${req.id}`
+            );
+          }
+        }
+      }
+
+      // Update known IDs
+      knownIdsRef.current = new Set(allRequests.map((r) => r.id));
+      initialLoadDone.current = true;
+
+      // Apply client-side filters
+      let filtered = allRequests;
+      if (statusFilter && statusFilter !== "all") {
+        filtered = filtered.filter((r) => r.status === statusFilter);
+      }
+      if (search) {
+        const s = search.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.customerName.toLowerCase().includes(s) ||
+            r.medicineName.toLowerCase().includes(s) ||
+            r.supplierName.toLowerCase().includes(s) ||
+            r.phone.includes(s)
+        );
+      }
+
+      setRequests(filtered);
+      setTotal(filtered.length);
+      setLoading(false);
+
+      // Also refresh stats
+      api.getDashboardStats().then(setStats).catch(() => {});
+      setStatsLoading(false);
+    });
+
+    return () => unsub();
+  }, [search, statusFilter]);
+
+  // ─── Periodic reminder for pending requests (every 30 minutes) ─────────────
+  useEffect(() => {
+    const REMINDER_INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+    const intervalId = setInterval(() => {
+      const pendingCount = requests.filter(
+        (r) => r.status === "pending"
+      ).length;
+      if (pendingCount > 0) {
+        showBrowserNotification(
+          "⏰ Pending Medicine Reminder",
+          `You have ${pendingCount} pending medicine request${pendingCount > 1 ? "s" : ""} waiting to be marked as arrived.`,
+          "pending-reminder"
+        );
+      }
+    }, REMINDER_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [requests]);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -699,19 +805,12 @@ export default function AdminPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadStats();
-    loadRequests();
-  }, [loadStats, loadRequests]);
+  // Note: initial load + search/filter now handled by the real-time subscription above.
+  // These functions are kept for manual refresh and post-action refreshes.
 
-  // Debounced search
-  useEffect(() => {
-    clearTimeout(searchDebounce.current);
-    searchDebounce.current = setTimeout(() => {
-      loadRequests(search, statusFilter === "all" ? undefined : statusFilter);
-    }, 300);
-    return () => clearTimeout(searchDebounce.current);
-  }, [search, statusFilter, loadRequests]);
+  // Note: initial load + search/filter are handled by the real-time subscription.
+  // The old useEffect hooks for loadStats/loadRequests and debounced search
+  // have been replaced by the onSnapshot listener above.
 
   async function handleMarkArrived(req: MedicineRequest) {
     setActionLoading(req.id + "-arrived");

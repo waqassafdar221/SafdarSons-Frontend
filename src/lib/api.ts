@@ -13,6 +13,7 @@ import {
   getDoc,
   query,
   where,
+  onSnapshot,
   serverTimestamp,
   Timestamp,
   type QueryConstraint,
@@ -318,4 +319,26 @@ export async function notifyCustomer(id: string): Promise<NotifyResponse> {
     whatsappUrl,
     status:      "notified",
   };
+}
+
+// ─── Real-time listener ───────────────────────────────────────────────────────
+/**
+ * Subscribes to real-time updates on the medicineRequests collection.
+ * Calls `onChange` with the full list whenever a document is added, modified, or removed.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToRequests(
+  onChange: (requests: MedicineRequest[]) => void
+): () => void {
+  const q = query(collection(db, COLLECTION));
+  return onSnapshot(q, (snap) => {
+    const requests = snap.docs
+      .map((d) => docToRequest(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(requests);
+  });
 }
