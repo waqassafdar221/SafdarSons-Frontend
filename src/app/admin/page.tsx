@@ -719,6 +719,21 @@ const EMPTY_SCHEDULE: api.SupplierScheduleCreate = {
   supplyDay: "Sunday",
 };
 
+/** Returns true if lastBookedAt falls within the current Sun–Sat calendar week. */
+function isBookedThisWeek(lastBookedAt?: string): boolean {
+  if (!lastBookedAt) return false;
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - dayOfWeek);
+  sunday.setHours(0, 0, 0, 0);
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  saturday.setHours(23, 59, 59, 999);
+  const booked = new Date(lastBookedAt);
+  return booked >= sunday && booked <= saturday;
+}
+
 function WeeklyScheduleView() {
   const [schedules, setSchedules] = useState<api.SupplierSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -740,6 +755,9 @@ function WeeklyScheduleView() {
   const [deleteError, setDeleteError] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeletePass, setShowDeletePass] = useState(false);
+
+  // Booking toggle state
+  const [togglingBooking, setTogglingBooking] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsub = api.subscribeToSupplierSchedules((data) => {
@@ -791,6 +809,20 @@ function WeeklyScheduleView() {
     setDeletePassword("");
     setDeleteError("");
     setShowDeletePass(false);
+  }
+
+  async function toggleBooking(s: api.SupplierSchedule) {
+    const booked = isBookedThisWeek(s.lastBookedAt);
+    setTogglingBooking((prev) => new Set([...prev, s.id]));
+    try {
+      await api.setBookingStatus(s.id, !booked);
+    } finally {
+      setTogglingBooking((prev) => {
+        const next = new Set(prev);
+        next.delete(s.id);
+        return next;
+      });
+    }
   }
 
   async function handleDelete(e: React.FormEvent) {
@@ -917,12 +949,39 @@ function WeeklyScheduleView() {
                       <p className="text-[11px] text-text-muted/50 italic">No bookings</p>
                     ) : (
                       <div className="space-y-1.5">
-                        {booking.map((s) => (
-                          <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
-                            <svg className="w-3 h-3 text-text-muted/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                            <span className="text-[12px] font-semibold text-text-dark truncate">{s.supplierName}</span>
-                          </div>
-                        ))}
+                        {booking.map((s) => {
+                          const booked = isBookedThisWeek(s.lastBookedAt);
+                          const isToggling = togglingBooking.has(s.id);
+                          return (
+                            <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                              <span className="text-[12px] font-semibold text-text-dark truncate flex-1">{s.supplierName}</span>
+                              <button
+                                onClick={() => toggleBooking(s)}
+                                disabled={isToggling}
+                                title={booked ? "Mark as pending" : "Mark as booked"}
+                                className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all disabled:opacity-50 ${
+                                  booked
+                                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                }`}
+                              >
+                                {isToggling ? (
+                                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                                ) : booked ? (
+                                  <>
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                    <span>Booked</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span>Pending</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
