@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getToken, getMe, clearAuth, type AdminUser } from "@/lib/api";
+import { clearAuth, type AdminUser } from "@/lib/api";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 const navItems = [
   {
@@ -28,33 +30,20 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
-    // Load cached user instantly
-    const cached = localStorage.getItem("admin_user");
-    if (cached) {
-      try {
-        setUser(JSON.parse(cached));
-      } catch {
-        // ignore
-      }
-    }
-
-    // Verify token with backend
-    getMe()
-      .then((u) => {
-        setUser(u);
-        localStorage.setItem("admin_user", JSON.stringify(u));
-        setLoading(false);
-      })
-      .catch(() => {
-        clearAuth();
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser) {
         router.replace("/login");
-      });
+        return;
+      }
+      const adminUser: AdminUser = {
+        uid:   firebaseUser.uid,
+        email: firebaseUser.email ?? undefined,
+        name:  firebaseUser.displayName ?? undefined,
+      };
+      setUser(adminUser);
+      setLoading(false);
+    });
+    return () => unsub();
   }, [router]);
 
   function handleLogout() {

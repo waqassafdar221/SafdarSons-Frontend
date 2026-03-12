@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { login, setToken, getToken } from "@/lib/api";
+import { login } from "@/lib/api";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,7 +16,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (getToken()) router.replace("/admin");
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) router.replace("/admin");
+    });
+    return () => unsub();
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -22,12 +27,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await login(email, password);
-      setToken(res.token);
-      localStorage.setItem(
-        "admin_user",
-        JSON.stringify({ uid: res.uid, email: res.email, name: res.name })
-      );
+      await login(email, password);
       router.push("/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed. Please try again.");

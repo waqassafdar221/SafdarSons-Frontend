@@ -1,45 +1,47 @@
-// ─── API Base ───────────────────────────────────────────────────────────────
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDoc,
+  query,
+  where,
+  serverTimestamp,
+  Timestamp,
+  type QueryConstraint,
+} from "firebase/firestore";
+import { auth, db } from "./firebase";
 
-// ─── Token Helpers ───────────────────────────────────────────────────────────
+// ─── Firestore collection name ────────────────────────────────────────────────
+const COLLECTION = "medicineRequests";
+
+// ─── Token Helpers (kept for API-surface compatibility) ───────────────────────
+/** Returns a truthy value when a Firebase user is signed in. */
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_token");
+  // Firebase persists auth state; currentUser is populated after initialisation.
+  // Use onAuthStateChanged in components for reliable async detection.
+  return auth.currentUser ? "firebase-session" : null;
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem("admin_token", token);
+/** No-op – Firebase manages its own session tokens. */
+export function setToken(_token: string): void {
+  // intentionally empty
 }
 
+/** Signs the current user out of Firebase. */
 export function clearAuth(): void {
-  localStorage.removeItem("admin_token");
-  localStorage.removeItem("admin_user");
+  signOut(auth).catch(() => {});
 }
 
-// ─── Core Fetch Wrapper ──────────────────────────────────────────────────────
-async function fetchAPI<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...((options.headers as Record<string, string>) ?? {}),
-  };
-
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Request failed");
-  }
-
-  return res.json() as Promise<T>;
-}
-
-// ─── Auth ────────────────────────────────────────────────────────────────────
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 export interface LoginResponse {
   token: string;
   uid: string;
@@ -57,17 +59,35 @@ export async function login(
   email: string,
   password: string
 ): Promise<LoginResponse> {
-  return fetchAPI<LoginResponse>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const token = await cred.user.getIdToken();
+  return {
+    token,
+    uid: cred.user.uid,
+    email: cred.user.email ?? email,
+    name: cred.user.displayName ?? undefined,
+  };
+}
+
+/** Resolves with the current Firebase user or rejects if not authenticated. */
+export async function getMe(): Promise<AdminUser> {
+  return new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      unsub();
+      if (user) {
+        resolve({
+          uid: user.uid,
+          email: user.email ?? undefined,
+          name: user.displayName ?? undefined,
+        });
+      } else {
+        reject(new Error("Not authenticated"));
+      }
+    });
   });
 }
 
-export async function getMe(): Promise<AdminUser> {
-  return fetchAPI<AdminUser>("/api/auth/me");
-}
-
-// ─── Dashboard ───────────────────────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 export interface DashboardStats {
   total: number;
   pending: number;
@@ -78,7 +98,21 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  return fetchAPI<DashboardStats>("/api/dashboard/stats");
+  const snap = await getDocs(collection(db, COLLECTION));
+  const stats: DashboardStats = {
+    total: 0,
+    pending: 0,
+    arrived: 0,
+    notified: 0,
+    collected: 0,
+    cancelled: 0,
+  };
+  snap.forEach((d) => {
+    const status = d.data().status as RequestStatus;
+    stats.total++;
+    if (status in stats) (stats as unknown as Record<string, number>)[status]++;
+  });
+  return stats;
 }
 
 // ─── Requests ────────────────────────────────────────────────────────────────
@@ -120,56 +154,128 @@ export interface RequestListResponse {
   total: number;
 }
 
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+function tsToString(val: unknown): string | undefined {
+  if (!val) return undefined;
+  if (val instanceof Timestamp) return val.toDate().toISOString();
+  if (typeof val === "string") return val;
+  return String(val);
+}
+
+function docToRequest(
+  id: string,
+  data: Record<string, unknown>
+): MedicineRequest {
+  return {
+    id,
+    customerName: (data.customerName as string) ?? "",
+    phone:        (data.phone as string) ?? "",
+    medicineName: (data.medicineName as string) ?? "",
+    quantity:     (data.quantity as number) ?? 1,
+    supplierName: (data.supplierName as string) ?? "",
+    notes:        data.notes as string | undefined,
+    status:       (data.status as RequestStatus) ?? "pending",
+    createdAt:    tsToString(data.createdAt),
+    updatedAt:    tsToString(data.updatedAt),
+    arrivedAt:    tsToString(data.arrivedAt),
+    notifiedAt:   tsToString(data.notifiedAt),
+    collectedAt:  tsToString(data.collectedAt),
+    createdBy:    (data.createdBy as string) ?? "",
+  };
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
 export async function getRequests(
   search?: string,
   status?: string
 ): Promise<RequestListResponse> {
-  const params = new URLSearchParams();
-  if (search) params.set("search", search);
-  if (status && status !== "all") params.set("status", status);
-  const q = params.toString() ? `?${params.toString()}` : "";
-  return fetchAPI<RequestListResponse>(`/api/requests${q}`);
+  // Build Firestore query (status filter only; text search done client-side)
+  const constraints: QueryConstraint[] = [];
+  if (status && status !== "all") {
+    constraints.push(where("status", "==", status));
+  }
+
+  const q = query(collection(db, COLLECTION), ...constraints);
+  const snap = await getDocs(q);
+
+  let requests = snap.docs.map((d) =>
+    docToRequest(d.id, d.data() as Record<string, unknown>)
+  );
+
+  // Sort newest-first client-side (avoids composite index requirement)
+  requests.sort((a, b) => {
+    const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bt - at;
+  });
+
+  // Client-side full-text search
+  if (search) {
+    const s = search.toLowerCase();
+    requests = requests.filter(
+      (r) =>
+        r.customerName.toLowerCase().includes(s) ||
+        r.medicineName.toLowerCase().includes(s) ||
+        r.supplierName.toLowerCase().includes(s) ||
+        r.phone.includes(s)
+    );
+  }
+
+  return { requests, total: requests.length };
 }
 
 export async function getRequest(id: string): Promise<MedicineRequest> {
-  return fetchAPI<MedicineRequest>(`/api/requests/${id}`);
+  const snap = await getDoc(doc(db, COLLECTION, id));
+  if (!snap.exists()) throw new Error("Request not found");
+  return docToRequest(snap.id, snap.data() as Record<string, unknown>);
 }
 
 export async function createRequest(
   data: MedicineRequestCreate
 ): Promise<MedicineRequest> {
-  return fetchAPI<MedicineRequest>("/api/requests", {
-    method: "POST",
-    body: JSON.stringify(data),
+  const user = auth.currentUser;
+  const ref = await addDoc(collection(db, COLLECTION), {
+    ...data,
+    status: "pending",
+    createdBy:  user?.uid ?? "admin",
+    createdAt:  serverTimestamp(),
+    updatedAt:  serverTimestamp(),
   });
+  return getRequest(ref.id);
 }
 
 export async function updateRequest(
   id: string,
   data: Partial<MedicineRequestCreate & { status: RequestStatus }>
 ): Promise<MedicineRequest> {
-  return fetchAPI<MedicineRequest>(`/api/requests/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
+  await updateDoc(doc(db, COLLECTION, id), {
+    ...data,
+    updatedAt: serverTimestamp(),
   });
+  return getRequest(id);
 }
 
 export async function deleteRequest(id: string): Promise<{ message: string }> {
-  return fetchAPI<{ message: string }>(`/api/requests/${id}`, {
-    method: "DELETE",
-  });
+  await deleteDoc(doc(db, COLLECTION, id));
+  return { message: "Deleted successfully" };
 }
 
 export async function markArrived(id: string): Promise<MedicineRequest> {
-  return fetchAPI<MedicineRequest>(`/api/requests/${id}/arrived`, {
-    method: "PATCH",
+  await updateDoc(doc(db, COLLECTION, id), {
+    status:    "arrived",
+    arrivedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
+  return getRequest(id);
 }
 
 export async function markCollected(id: string): Promise<MedicineRequest> {
-  return fetchAPI<MedicineRequest>(`/api/requests/${id}/collected`, {
-    method: "PATCH",
+  await updateDoc(doc(db, COLLECTION, id), {
+    status:      "collected",
+    collectedAt: serverTimestamp(),
+    updatedAt:   serverTimestamp(),
   });
+  return getRequest(id);
 }
 
 export interface NotifyResponse {
@@ -178,8 +284,35 @@ export interface NotifyResponse {
   status: string;
 }
 
+/**
+ * Marks the request as "notified" in Firestore and returns a pre-filled
+ * WhatsApp URL so the admin can send a message to the customer directly.
+ */
 export async function notifyCustomer(id: string): Promise<NotifyResponse> {
-  return fetchAPI<NotifyResponse>(`/api/requests/${id}/notify`, {
-    method: "POST",
+  const req = await getRequest(id);
+
+  await updateDoc(doc(db, COLLECTION, id), {
+    status:     "notified",
+    notifiedAt: serverTimestamp(),
+    updatedAt:  serverTimestamp(),
   });
+
+  const text = encodeURIComponent(
+    `Assalamu Alaikum ${req.customerName},\n\n` +
+    `Your medicine *${req.medicineName}* (Qty: ${req.quantity}) ordered from ` +
+    `*${req.supplierName}* has arrived at *Safdar & Sons Pharma + Veterinary Store*.\n\n` +
+    `Please visit us at your earliest convenience.\n\n` +
+    `📍 Near Ravi Town, NawanKot Road, Khanpur\n` +
+    `🕐 Open: 9:00 AM – 10:00 PM\n\n` +
+    `Thank you for trusting us! 🏥`
+  );
+
+  const phone = req.phone.replace(/\D/g, ""); // strip non-digits
+  const whatsappUrl = `https://wa.me/${phone}?text=${text}`;
+
+  return {
+    message:     "Customer notified – open WhatsApp to send the message.",
+    whatsappUrl,
+    status:      "notified",
+  };
 }
