@@ -306,12 +306,12 @@ export async function notifyCustomer(id: string): Promise<NotifyResponse> {
 
   const text = encodeURIComponent(
     `Assalamu Alaikum ${req.customerName},\n\n` +
-    `Your medicine *${req.medicineName}* (Qty: ${req.quantity}) ordered from ` +
-    `*${req.supplierName}* has arrived at *Safdar & Sons Pharma + Veterinary Store*.\n\n` +
+    `Your medicine *${req.medicineName}*` +
+    `has arrived at *Safdar & Sons Pharma + Veterinary Store*.\n\n` +
     `Please visit us at your earliest convenience.\n\n` +
-    `📍 Near Ravi Town, NawanKot Road, Khanpur\n` +
-    `🕐 Open: 9:00 AM – 10:00 PM\n\n` +
-    `Thank you for trusting us! 🏥`
+    `Near Ravi Town, NawanKot Road, Khanpur\n` +
+    `Open: 9:00 AM – 11:00 PM\n\n` +
+    `Thank you for trusting us!`
   );
 
   const phone = req.phone.replace(/\D/g, ""); // strip non-digits
