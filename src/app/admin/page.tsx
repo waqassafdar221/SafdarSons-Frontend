@@ -71,6 +71,7 @@ const EMPTY_FORM: MedicineRequestCreate = {
   medicineName: "",
   quantity: 1,
   supplierName: "",
+  companyName: "",
   notes: "",
 };
 
@@ -83,6 +84,7 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
           medicineName:  initial.medicineName,
           quantity:      initial.quantity,
           supplierName:  initial.supplierName,
+          companyName:   initial.companyName ?? "",
           notes:         initial.notes ?? "",
         }
       : { ...EMPTY_FORM }
@@ -194,12 +196,21 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
                 className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
               />
             </div>
-            <div className="col-span-2 space-y-1.5">
+            <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Supplier Name *</label>
               <input
                 required value={form.supplierName}
                 onChange={(e) => set("supplierName", e.target.value)}
                 placeholder="PharmEvo"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-text-dark">Company Name *</label>
+              <input
+                required value={form.companyName}
+                onChange={(e) => set("companyName", e.target.value)}
+                placeholder="GSK, Sanofi, etc."
                 className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
               />
             </div>
@@ -309,6 +320,7 @@ function DetailDrawer({
               <Row label="Name"     value={request.medicineName} />
               <Row label="Quantity" value={`${request.quantity} unit${request.quantity > 1 ? "s" : ""}`} />
               <Row label="Supplier" value={request.supplierName} />
+              <Row label="Company" value={request.companyName || "—"} />
               {request.notes && <Row label="Notes" value={request.notes} />}
             </div>
           </div>
@@ -471,6 +483,177 @@ function DeleteConfirm({
   );
 }
 
+// ─── Order Summary View (grouped by Supplier) ────────────────────────────────
+interface SupplierGroup {
+  supplierName: string;
+  medicines: {
+    medicineName: string;
+    companyName: string;
+    totalQty: number;
+    customers: string[];
+    status: RequestStatus;
+  }[];
+  totalItems: number;
+}
+
+function OrderSummaryView({
+  requests,
+  loading,
+}: {
+  requests: MedicineRequest[];
+  loading: boolean;
+}) {
+  // Only show pending + arrived (not yet collected/cancelled)
+  const activeRequests = requests.filter(
+    (r) => r.status === "pending" || r.status === "arrived"
+  );
+
+  // Group by supplier
+  const grouped: SupplierGroup[] = [];
+  const supplierMap = new Map<string, SupplierGroup>();
+
+  for (const req of activeRequests) {
+    const key = req.supplierName.toLowerCase().trim();
+    if (!supplierMap.has(key)) {
+      const group: SupplierGroup = {
+        supplierName: req.supplierName,
+        medicines: [],
+        totalItems: 0,
+      };
+      supplierMap.set(key, group);
+      grouped.push(group);
+    }
+    const group = supplierMap.get(key)!;
+
+    // Check if same medicine + company already exists under this supplier
+    const medKey = `${req.medicineName.toLowerCase().trim()}|${(req.companyName || "").toLowerCase().trim()}`;
+    let med = group.medicines.find(
+      (m) =>
+        `${m.medicineName.toLowerCase().trim()}|${(m.companyName || "").toLowerCase().trim()}` ===
+        medKey
+    );
+    if (!med) {
+      med = {
+        medicineName: req.medicineName,
+        companyName: req.companyName || "",
+        totalQty: 0,
+        customers: [],
+        status: req.status,
+      };
+      group.medicines.push(med);
+    }
+    med.totalQty += req.quantity;
+    if (!med.customers.includes(req.customerName)) {
+      med.customers.push(req.customerName);
+    }
+    group.totalItems += req.quantity;
+  }
+
+  // Sort suppliers alphabetically
+  grouped.sort((a, b) => a.supplierName.localeCompare(b.supplierName));
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-border-soft p-6 space-y-3">
+            <div className="h-5 w-40 bg-bg rounded-full animate-pulse" />
+            <div className="h-4 w-full bg-bg rounded-full animate-pulse" />
+            <div className="h-4 w-3/4 bg-bg rounded-full animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (grouped.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-border-soft py-16 text-center">
+        <svg className="w-10 h-10 text-text-muted/30 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-[13px] text-text-muted font-medium">No pending orders</p>
+        <p className="text-[12px] text-text-muted/60 mt-1">All medicines have been collected or cancelled</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[12px] text-text-muted">
+        Showing <span className="font-semibold text-text-dark">{grouped.length}</span> supplier{grouped.length !== 1 ? "s" : ""} with pending / arrived orders
+      </p>
+
+      {grouped.map((group) => (
+        <div
+          key={group.supplierName}
+          className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden"
+        >
+          {/* Supplier header */}
+          <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-border-soft flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-[14px] font-bold text-text-dark">{group.supplierName}</h3>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {group.medicines.length} medicine{group.medicines.length !== 1 ? "s" : ""} · {group.totalItems} total unit{group.totalItems !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Medicines table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-bg/60">
+                  {["Medicine", "Company", "Total Qty", "Requested By", "Status"].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-soft">
+                {group.medicines.map((med, idx) => (
+                  <tr key={idx} className="hover:bg-bg/40 transition-colors">
+                    <td className="px-5 py-3.5 pl-6">
+                      <p className="text-[13px] font-semibold text-text-dark">{med.medicineName}</p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-[13px] text-text-soft">{med.companyName || "—"}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 text-[13px] font-bold">
+                        {med.totalQty}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <p className="text-[12px] text-text-muted">
+                        {med.customers.join(", ")}
+                      </p>
+                    </td>
+                    <td className="px-5 py-3.5 pr-6">
+                      <StatusBadge status={med.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -481,6 +664,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary">("requests");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -622,7 +806,47 @@ export default function AdminPage() {
         })}
       </div>
 
+      {/* ── Tab Switcher ── */}
+      <div className="flex items-center gap-1 bg-bg rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setActiveTab("requests")}
+          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+            activeTab === "requests"
+              ? "bg-white text-text-dark shadow-sm"
+              : "text-text-muted hover:text-text-dark"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+            All Requests
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab("orderSummary")}
+          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+            activeTab === "orderSummary"
+              ? "bg-white text-text-dark shadow-sm"
+              : "text-text-muted hover:text-text-dark"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            Order Summary
+          </span>
+        </button>
+      </div>
+
+      {/* ── Order Summary (grouped by Supplier) ── */}
+      {activeTab === "orderSummary" && (
+        <OrderSummaryView requests={requests} loading={loading} />
+      )}
+
       {/* ── Requests Table ── */}
+      {activeTab === "requests" && (
       <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
         {/* Table header */}
         <div className="px-6 py-4 border-b border-border-soft flex items-center gap-4 flex-wrap">
@@ -683,7 +907,7 @@ export default function AdminPage() {
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="bg-bg/60">
-                {["Customer", "Medicine", "Qty", "Supplier", "Status", "Created", "Actions"].map((h) => (
+                {["Customer", "Medicine", "Qty", "Supplier", "Company", "Status", "Created", "Actions"].map((h) => (
                   <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">
                     {h}
                   </th>
@@ -694,7 +918,7 @@ export default function AdminPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} className="px-5 py-4 first:pl-6 last:pr-6">
                         <div className="h-4 bg-bg rounded-full animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
                       </td>
@@ -703,7 +927,7 @@ export default function AdminPage() {
                 ))
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center">
+                  <td colSpan={8} className="py-16 text-center">
                     <svg className="w-10 h-10 text-text-muted/30 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
@@ -735,6 +959,9 @@ export default function AdminPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="text-[13px] text-text-soft">{req.supplierName}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-[13px] text-text-soft">{req.companyName || "—"}</span>
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={req.status} />
@@ -796,6 +1023,7 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Modals ── */}
       {showCreate && (

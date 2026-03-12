@@ -130,6 +130,7 @@ export interface MedicineRequest {
   medicineName: string;
   quantity: number;
   supplierName: string;
+  companyName: string;
   notes?: string;
   status: RequestStatus;
   createdAt?: string;
@@ -146,6 +147,7 @@ export interface MedicineRequestCreate {
   medicineName: string;
   quantity: number;
   supplierName: string;
+  companyName: string;
   notes?: string;
 }
 
@@ -173,6 +175,7 @@ function docToRequest(
     medicineName: (data.medicineName as string) ?? "",
     quantity:     (data.quantity as number) ?? 1,
     supplierName: (data.supplierName as string) ?? "",
+    companyName:  (data.companyName as string) ?? "",
     notes:        data.notes as string | undefined,
     status:       (data.status as RequestStatus) ?? "pending",
     createdAt:    tsToString(data.createdAt),
