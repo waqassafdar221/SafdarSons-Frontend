@@ -698,6 +698,315 @@ function OrderSummaryView({
   );
 }
 
+// ─── Weekly Schedule View ───────────────────────────────────────────────────
+const DAYS_OF_WEEK: api.DayOfWeek[] = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
+
+const DAY_COLORS: Record<api.DayOfWeek, { bg: string; border: string; text: string; dot: string }> = {
+  Sunday:    { bg: "bg-rose-50",    border: "border-rose-200",    text: "text-rose-700",    dot: "bg-rose-400"    },
+  Monday:    { bg: "bg-blue-50",    border: "border-blue-200",    text: "text-blue-700",    dot: "bg-blue-400"    },
+  Tuesday:   { bg: "bg-violet-50",  border: "border-violet-200",  text: "text-violet-700",  dot: "bg-violet-400"  },
+  Wednesday: { bg: "bg-amber-50",   border: "border-amber-200",   text: "text-amber-700",   dot: "bg-amber-400"   },
+  Thursday:  { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-400" },
+  Friday:    { bg: "bg-cyan-50",    border: "border-cyan-200",    text: "text-cyan-700",    dot: "bg-cyan-400"    },
+  Saturday:  { bg: "bg-orange-50",  border: "border-orange-200",  text: "text-orange-700",  dot: "bg-orange-400"  },
+};
+
+const EMPTY_SCHEDULE: api.SupplierScheduleCreate = {
+  supplierName: "",
+  bookingDay: "Sunday",
+  supplyDay: "Sunday",
+};
+
+function WeeklyScheduleView() {
+  const [schedules, setSchedules] = useState<api.SupplierSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<api.SupplierScheduleCreate>({ ...EMPTY_SCHEDULE });
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+
+  // Real-time subscription
+  useEffect(() => {
+    const unsub = api.subscribeToSupplierSchedules((data) => {
+      setSchedules(data);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError("");
+    if (!form.supplierName.trim()) { setFormError("Supplier name is required."); return; }
+    setSaving(true);
+    try {
+      await api.addSupplierSchedule(form);
+      setForm({ ...EMPTY_SCHEDULE });
+      setShowForm(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      await api.deleteSupplierSchedule(id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long" }) as api.DayOfWeek;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-[12px] text-text-muted">
+            <span className="font-semibold text-text-dark">{schedules.length}</span> supplier{schedules.length !== 1 ? "s" : ""} scheduled
+          </p>
+        </div>
+        <button
+          onClick={() => { setShowForm((v) => !v); setFormError(""); }}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-[13px] font-semibold rounded-xl hover:bg-primary-dark shadow-sm transition-all"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d={showForm ? "M6 18L18 6M6 6l12 12" : "M12 4.5v15m7.5-7.5h-15"} />
+          </svg>
+          {showForm ? "Cancel" : "Add Supplier"}
+        </button>
+      </div>
+
+      {/* Add Supplier Form */}
+      {showForm && (
+        <form
+          onSubmit={handleAdd}
+          className="bg-white border border-border-soft rounded-2xl p-5 space-y-4 shadow-sm"
+        >
+          <h3 className="text-[14px] font-semibold text-text-dark">New Supplier Schedule</h3>
+          {formError && (
+            <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+              <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+              <p className="text-[12px] text-red-600">{formError}</p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-text-dark">Supplier / Company Name *</label>
+              <input
+                required
+                value={form.supplierName}
+                onChange={(e) => setForm((f) => ({ ...f, supplierName: e.target.value }))}
+                placeholder="e.g. Nestle, Getz, GSK"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-text-dark">Booking Day *</label>
+              <select
+                value={form.bookingDay}
+                onChange={(e) => setForm((f) => ({ ...f, bookingDay: e.target.value as api.DayOfWeek }))}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              >
+                {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-text-dark">Supply Day *</label>
+              <select
+                value={form.supplyDay}
+                onChange={(e) => setForm((f) => ({ ...f, supplyDay: e.target.value as api.DayOfWeek }))}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              >
+                {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center gap-2"
+            >
+              {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+              {saving ? "Saving…" : "Save Supplier"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-border-soft p-4 space-y-3 animate-pulse">
+              <div className="h-5 w-28 bg-bg rounded-full" />
+              <div className="h-4 w-full bg-bg rounded-full" />
+              <div className="h-4 w-3/4 bg-bg rounded-full" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 7-day grid */}
+      {!loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {DAYS_OF_WEEK.map((day) => {
+            const c = DAY_COLORS[day];
+            const isToday = day === today;
+            const booking = schedules.filter((s) => s.bookingDay === day);
+            const supply  = schedules.filter((s) => s.supplyDay  === day);
+
+            return (
+              <div
+                key={day}
+                className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden ${
+                  isToday ? "ring-2 ring-offset-1 ring-primary/40 shadow-md" : "shadow-sm"
+                }`}
+              >
+                {/* Day header */}
+                <div className={`px-4 py-3 flex items-center justify-between border-b ${c.border}`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                    <h3 className={`text-[14px] font-bold ${c.text}`}>{day}</h3>
+                  </div>
+                  {isToday && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>
+                  )}
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {/* Booking section */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      Booking Day
+                    </p>
+                    {booking.length === 0 ? (
+                      <p className="text-[11px] text-text-muted/50 italic">No bookings</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {booking.map((s) => (
+                          <div key={s.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                            <span className="text-[12px] font-semibold text-text-dark truncate">{s.supplierName}</span>
+                            <button
+                              onClick={() => handleDelete(s.id)}
+                              disabled={deletingId === s.id}
+                              title="Remove"
+                              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              {deletingId === s.id ? (
+                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                              ) : (
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`h-px ${c.border} border-t`} />
+
+                  {/* Supply section */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                      Supply Day
+                    </p>
+                    {supply.length === 0 ? (
+                      <p className="text-[11px] text-text-muted/50 italic">No supplies</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {supply.map((s) => (
+                          <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                            <svg className="w-3 h-3 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                            <span className="text-[12px] font-semibold text-text-dark truncate">{s.supplierName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Supplier list table */}
+      {!loading && schedules.length > 0 && (
+        <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-border-soft">
+            <h3 className="text-[14px] font-semibold text-text-dark">All Suppliers</h3>
+            <p className="text-[12px] text-text-muted mt-0.5">{schedules.length} supplier schedule{schedules.length !== 1 ? "s" : ""}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-bg/60">
+                  {["Supplier / Company", "Booking Day", "Supply Day", ""].map((h) => (
+                    <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-soft">
+                {schedules.map((s) => {
+                  const bc = DAY_COLORS[s.bookingDay];
+                  const sc = DAY_COLORS[s.supplyDay];
+                  return (
+                    <tr key={s.id} className="hover:bg-bg/40 transition-colors">
+                      <td className="px-5 py-3.5 pl-6">
+                        <p className="text-[13px] font-semibold text-text-dark">{s.supplierName}</p>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${bc.bg} ${bc.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${bc.dot}`} />
+                          {s.bookingDay}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                          {s.supplyDay}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 pr-6 text-right">
+                        <button
+                          onClick={() => handleDelete(s.id)}
+                          disabled={deletingId === s.id}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-100 bg-red-50 text-[12px] font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                        >
+                          {deletingId === s.id ? (
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                          )}
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -708,7 +1017,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule">("requests");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -950,11 +1259,31 @@ export default function AdminPage() {
             Order Summary
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab("weeklySchedule")}
+          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+            activeTab === "weeklySchedule"
+              ? "bg-white text-text-dark shadow-sm"
+              : "text-text-muted hover:text-text-dark"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+            </svg>
+            Weekly Schedule
+          </span>
+        </button>
       </div>
 
       {/* ── Order Summary (grouped by Supplier) ── */}
       {activeTab === "orderSummary" && (
         <OrderSummaryView requests={requests} loading={loading} />
+      )}
+
+      {/* ── Weekly Schedule ── */}
+      {activeTab === "weeklySchedule" && (
+        <WeeklyScheduleView />
       )}
 
       {/* ── Requests Table ── */}

@@ -345,3 +345,67 @@ export function subscribeToRequests(
     onChange(requests);
   });
 }
+
+// ─── Supplier Schedule ────────────────────────────────────────────────────────
+export type DayOfWeek =
+  | "Sunday" | "Monday" | "Tuesday" | "Wednesday"
+  | "Thursday" | "Friday" | "Saturday";
+
+export interface SupplierSchedule {
+  id: string;
+  supplierName: string;
+  bookingDay: DayOfWeek;
+  supplyDay: DayOfWeek;
+  createdAt?: string;
+}
+
+export interface SupplierScheduleCreate {
+  supplierName: string;
+  bookingDay: DayOfWeek;
+  supplyDay: DayOfWeek;
+}
+
+const SCHEDULE_COLLECTION = "supplierSchedules";
+
+function docToSchedule(id: string, data: Record<string, unknown>): SupplierSchedule {
+  return {
+    id,
+    supplierName: (data.supplierName as string) ?? "",
+    bookingDay:   (data.bookingDay as DayOfWeek) ?? "Sunday",
+    supplyDay:    (data.supplyDay as DayOfWeek) ?? "Sunday",
+    createdAt:    tsToString(data.createdAt),
+  };
+}
+
+export async function getSupplierSchedules(): Promise<SupplierSchedule[]> {
+  const snap = await getDocs(collection(db, SCHEDULE_COLLECTION));
+  return snap.docs
+    .map((d) => docToSchedule(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
+}
+
+export async function addSupplierSchedule(
+  data: SupplierScheduleCreate
+): Promise<SupplierSchedule> {
+  const ref = await addDoc(collection(db, SCHEDULE_COLLECTION), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+  const snap = await getDoc(doc(db, SCHEDULE_COLLECTION, ref.id));
+  return docToSchedule(ref.id, snap.data() as Record<string, unknown>);
+}
+
+export async function deleteSupplierSchedule(id: string): Promise<void> {
+  await deleteDoc(doc(db, SCHEDULE_COLLECTION, id));
+}
+
+export function subscribeToSupplierSchedules(
+  onChange: (schedules: SupplierSchedule[]) => void
+): () => void {
+  return onSnapshot(collection(db, SCHEDULE_COLLECTION), (snap) => {
+    const schedules = snap.docs
+      .map((d) => docToSchedule(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
+    onChange(schedules);
+  });
+}
