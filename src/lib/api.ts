@@ -2,6 +2,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
 } from "firebase/auth";
 import {
   collection,
@@ -393,6 +395,24 @@ export async function addSupplierSchedule(
   });
   const snap = await getDoc(doc(db, SCHEDULE_COLLECTION, ref.id));
   return docToSchedule(ref.id, snap.data() as Record<string, unknown>);
+}
+
+export async function updateSupplierSchedule(
+  id: string,
+  data: Partial<SupplierScheduleCreate>
+): Promise<void> {
+  await updateDoc(doc(db, SCHEDULE_COLLECTION, id), { ...data });
+}
+
+/**
+ * Re-authenticates the currently signed-in user with their password.
+ * Throws if the password is wrong.
+ */
+export async function reauthenticate(password: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user || !user.email) throw new Error("No signed-in user.");
+  const credential = EmailAuthProvider.credential(user.email, password);
+  await reauthenticateWithCredential(user, credential);
 }
 
 export async function deleteSupplierSchedule(id: string): Promise<void> {

@@ -725,10 +725,22 @@ function WeeklyScheduleView() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<api.SupplierScheduleCreate>({ ...EMPTY_SCHEDULE });
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const [supplierSearch, setSupplierSearch] = useState("");
 
-  // Real-time subscription
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState<api.SupplierSchedule | null>(null);
+  const [editForm, setEditForm] = useState<api.SupplierScheduleCreate>({ ...EMPTY_SCHEDULE });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  // Password-protected delete state
+  const [deleteTarget, setDeleteTarget] = useState<api.SupplierSchedule | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showDeletePass, setShowDeletePass] = useState(false);
+
   useEffect(() => {
     const unsub = api.subscribeToSupplierSchedules((data) => {
       setSchedules(data);
@@ -753,28 +765,69 @@ function WeeklyScheduleView() {
     }
   }
 
-  async function handleDelete(id: string) {
-    setDeletingId(id);
+  function openEdit(s: api.SupplierSchedule) {
+    setEditTarget(s);
+    setEditForm({ supplierName: s.supplierName, bookingDay: s.bookingDay, supplyDay: s.supplyDay });
+    setEditError("");
+  }
+
+  async function handleEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+    setEditError("");
+    setEditSaving(true);
     try {
-      await api.deleteSupplierSchedule(id);
+      await api.updateSupplierSchedule(editTarget.id, editForm);
+      setEditTarget(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+      setEditError(err instanceof Error ? err.message : "Failed to update");
     } finally {
-      setDeletingId(null);
+      setEditSaving(false);
+    }
+  }
+
+  function openDelete(s: api.SupplierSchedule) {
+    setDeleteTarget(s);
+    setDeletePassword("");
+    setDeleteError("");
+    setShowDeletePass(false);
+  }
+
+  async function handleDelete(e: React.FormEvent) {
+    e.preventDefault();
+    if (!deleteTarget) return;
+    setDeleteError("");
+    setDeleteLoading(true);
+    try {
+      await api.reauthenticate(deletePassword);
+      await api.deleteSupplierSchedule(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      setDeleteError(msg.includes("auth") || msg.includes("password") || msg.includes("wrong") || msg.includes("credential")
+        ? "Incorrect password. Please try again."
+        : msg);
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" }) as api.DayOfWeek;
 
+  const filteredSchedules = supplierSearch
+    ? schedules.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
+    : schedules;
+
+  const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
+  const selectCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <p className="text-[12px] text-text-muted">
-            <span className="font-semibold text-text-dark">{schedules.length}</span> supplier{schedules.length !== 1 ? "s" : ""} scheduled
-          </p>
-        </div>
+        <p className="text-[12px] text-text-muted">
+          <span className="font-semibold text-text-dark">{schedules.length}</span> supplier{schedules.length !== 1 ? "s" : ""} scheduled
+        </p>
         <button
           onClick={() => { setShowForm((v) => !v); setFormError(""); }}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-[13px] font-semibold rounded-xl hover:bg-primary-dark shadow-sm transition-all"
@@ -788,10 +841,7 @@ function WeeklyScheduleView() {
 
       {/* Add Supplier Form */}
       {showForm && (
-        <form
-          onSubmit={handleAdd}
-          className="bg-white border border-border-soft rounded-2xl p-5 space-y-4 shadow-sm"
-        >
+        <form onSubmit={handleAdd} className="bg-white border border-border-soft rounded-2xl p-5 space-y-4 shadow-sm">
           <h3 className="text-[14px] font-semibold text-text-dark">New Supplier Schedule</h3>
           {formError && (
             <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
@@ -802,41 +852,23 @@ function WeeklyScheduleView() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Supplier / Company Name *</label>
-              <input
-                required
-                value={form.supplierName}
-                onChange={(e) => setForm((f) => ({ ...f, supplierName: e.target.value }))}
-                placeholder="e.g. Nestle, Getz, GSK"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-              />
+              <input required value={form.supplierName} onChange={(e) => setForm((f) => ({ ...f, supplierName: e.target.value }))} placeholder="e.g. Nestle, Getz, GSK" className={inputCls} />
             </div>
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Booking Day *</label>
-              <select
-                value={form.bookingDay}
-                onChange={(e) => setForm((f) => ({ ...f, bookingDay: e.target.value as api.DayOfWeek }))}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-              >
+              <select value={form.bookingDay} onChange={(e) => setForm((f) => ({ ...f, bookingDay: e.target.value as api.DayOfWeek }))} className={selectCls}>
                 {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Supply Day *</label>
-              <select
-                value={form.supplyDay}
-                onChange={(e) => setForm((f) => ({ ...f, supplyDay: e.target.value as api.DayOfWeek }))}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-              >
+              <select value={form.supplyDay} onChange={(e) => setForm((f) => ({ ...f, supplyDay: e.target.value as api.DayOfWeek }))} className={selectCls}>
                 {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
           </div>
           <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center gap-2"
-            >
+            <button type="submit" disabled={saving} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center gap-2">
               {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
               {saving ? "Saving…" : "Save Supplier"}
             </button>
@@ -857,7 +889,7 @@ function WeeklyScheduleView() {
         </div>
       )}
 
-      {/* 7-day grid */}
+      {/* 7-day grid — no delete buttons here, just names */}
       {!loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {DAYS_OF_WEEK.map((day) => {
@@ -867,25 +899,15 @@ function WeeklyScheduleView() {
             const supply  = schedules.filter((s) => s.supplyDay  === day);
 
             return (
-              <div
-                key={day}
-                className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden ${
-                  isToday ? "ring-2 ring-offset-1 ring-primary/40 shadow-md" : "shadow-sm"
-                }`}
-              >
-                {/* Day header */}
+              <div key={day} className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden ${isToday ? "ring-2 ring-offset-1 ring-primary/40 shadow-md" : "shadow-sm"}`}>
                 <div className={`px-4 py-3 flex items-center justify-between border-b ${c.border}`}>
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${c.dot}`} />
                     <h3 className={`text-[14px] font-bold ${c.text}`}>{day}</h3>
                   </div>
-                  {isToday && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>
-                  )}
+                  {isToday && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>}
                 </div>
-
                 <div className="p-4 space-y-4">
-                  {/* Booking section */}
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
@@ -896,29 +918,15 @@ function WeeklyScheduleView() {
                     ) : (
                       <div className="space-y-1.5">
                         {booking.map((s) => (
-                          <div key={s.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                          <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                            <svg className="w-3 h-3 text-text-muted/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                             <span className="text-[12px] font-semibold text-text-dark truncate">{s.supplierName}</span>
-                            <button
-                              onClick={() => handleDelete(s.id)}
-                              disabled={deletingId === s.id}
-                              title="Remove"
-                              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
-                            >
-                              {deletingId === s.id ? (
-                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
-                              ) : (
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                              )}
-                            </button>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
                   <div className={`h-px ${c.border} border-t`} />
-
-                  {/* Supply section */}
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
@@ -944,24 +952,45 @@ function WeeklyScheduleView() {
         </div>
       )}
 
-      {/* Supplier list table */}
+      {/* Supplier list table with search */}
       {!loading && schedules.length > 0 && (
         <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border-soft">
-            <h3 className="text-[14px] font-semibold text-text-dark">All Suppliers</h3>
-            <p className="text-[12px] text-text-muted mt-0.5">{schedules.length} supplier schedule{schedules.length !== 1 ? "s" : ""}</p>
+          <div className="px-6 py-4 border-b border-border-soft flex items-center gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[14px] font-semibold text-text-dark">All Suppliers</h3>
+              <p className="text-[12px] text-text-muted mt-0.5">
+                {filteredSchedules.length} of {schedules.length} supplier schedule{schedules.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            {/* Search bar */}
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                value={supplierSearch}
+                onChange={(e) => setSupplierSearch(e.target.value)}
+                placeholder="Search supplier…"
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-bg/60">
-                  {["Supplier / Company", "Booking Day", "Supply Day", ""].map((h) => (
+                  {["Supplier / Company", "Booking Day", "Supply Day", "Actions"].map((h) => (
                     <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-soft">
-                {schedules.map((s) => {
+                {filteredSchedules.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-[13px] text-text-muted">No suppliers match your search</td>
+                  </tr>
+                ) : filteredSchedules.map((s) => {
                   const bc = DAY_COLORS[s.bookingDay];
                   const sc = DAY_COLORS[s.supplyDay];
                   return (
@@ -971,35 +1000,141 @@ function WeeklyScheduleView() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${bc.bg} ${bc.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${bc.dot}`} />
-                          {s.bookingDay}
+                          <span className={`w-1.5 h-1.5 rounded-full ${bc.dot}`} />{s.bookingDay}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${sc.bg} ${sc.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                          {s.supplyDay}
+                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />{s.supplyDay}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 pr-6 text-right">
-                        <button
-                          onClick={() => handleDelete(s.id)}
-                          disabled={deletingId === s.id}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-100 bg-red-50 text-[12px] font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                        >
-                          {deletingId === s.id ? (
-                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
-                          ) : (
+                      <td className="px-5 py-3.5 pr-6">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEdit(s)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => openDelete(s)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-100 bg-red-50 text-[12px] font-medium text-red-600 hover:bg-red-100 transition-colors"
+                          >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                          )}
-                          Remove
-                        </button>
+                            Remove
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Modal ── */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div>
+              <h2 className="text-[15px] font-semibold text-text-dark">Edit Supplier</h2>
+              <p className="text-[12px] text-text-muted mt-0.5">Update schedule for <span className="font-semibold">{editTarget.supplierName}</span></p>
+            </div>
+            {editError && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+                <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                <p className="text-[12px] text-red-600">{editError}</p>
+              </div>
+            )}
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-text-dark">Supplier / Company Name *</label>
+                <input required value={editForm.supplierName} onChange={(e) => setEditForm((f) => ({ ...f, supplierName: e.target.value }))} className={inputCls} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[12px] font-medium text-text-dark">Booking Day *</label>
+                  <select value={editForm.bookingDay} onChange={(e) => setEditForm((f) => ({ ...f, bookingDay: e.target.value as api.DayOfWeek }))} className={selectCls}>
+                    {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[12px] font-medium text-text-dark">Supply Day *</label>
+                  <select value={editForm.supplyDay} onChange={(e) => setEditForm((f) => ({ ...f, supplyDay: e.target.value as api.DayOfWeek }))} className={selectCls}>
+                    {DAYS_OF_WEEK.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setEditTarget(null)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={editSaving} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+                  {editSaving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {editSaving ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Password-protected Delete Modal ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-text-dark">Remove Supplier?</h3>
+                <p className="text-[12px] text-text-muted mt-0.5">Enter your admin password to confirm.</p>
+              </div>
+            </div>
+            <div className="bg-bg rounded-xl px-4 py-3">
+              <p className="text-[13px] font-semibold text-text-dark">{deleteTarget.supplierName}</p>
+              <p className="text-[11px] text-text-muted mt-0.5">Booking: {deleteTarget.bookingDay} · Supply: {deleteTarget.supplyDay}</p>
+            </div>
+            {deleteError && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+                <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                <p className="text-[12px] text-red-600">{deleteError}</p>
+              </div>
+            )}
+            <form onSubmit={handleDelete} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-text-dark">Admin Password *</label>
+                <div className="relative">
+                  <input
+                    required
+                    type={showDeletePass ? "text" : "password"}
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className={inputCls + " pr-10"}
+                  />
+                  <button type="button" onClick={() => setShowDeletePass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark">
+                    {showDeletePass
+                      ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                      : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={deleteLoading} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-[13px] font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+                  {deleteLoading && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {deleteLoading ? "Verifying…" : "Confirm Remove"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
