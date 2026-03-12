@@ -104,6 +104,7 @@ const EMPTY_FORM: MedicineRequestCreate = {
   supplierName: "",
   companyName: "",
   notes: "",
+  expectedDate: "",
 };
 
 function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
@@ -117,6 +118,7 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
           supplierName:  initial.supplierName,
           companyName:   initial.companyName ?? "",
           notes:         initial.notes ?? "",
+          expectedDate:  initial.expectedDate ?? "",
         }
       : { ...EMPTY_FORM }
   );
@@ -246,6 +248,16 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
               />
             </div>
             <div className="col-span-2 space-y-1.5">
+              <label className="text-[12px] font-medium text-text-dark">Expected Supply Date</label>
+              <input
+                type="date"
+                value={form.expectedDate ?? ""}
+                min={new Date().toISOString().split("T")[0]}
+                onChange={(e) => set("expectedDate", e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Notes</label>
               <textarea
                 value={form.notes ?? ""}
@@ -352,6 +364,7 @@ function DetailDrawer({
               <Row label="Quantity" value={`${request.quantity} unit${request.quantity > 1 ? "s" : ""}`} />
               <Row label="Supplier" value={request.supplierName} />
               <Row label="Company" value={request.companyName || "—"} />
+              <Row label="Expected Date" value={request.expectedDate ? fmtDate(request.expectedDate) : "—"} />
               {request.notes && <Row label="Notes" value={request.notes} />}
             </div>
           </div>
@@ -1006,7 +1019,7 @@ export default function AdminPage() {
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="bg-bg/60">
-                {["Customer", "Medicine", "Qty", "Supplier", "Company", "Status", "Created", "Actions"].map((h) => (
+                {["Customer", "Medicine", "Qty", "Supplier", "Company", "Expected Date", "Status", "Created", "Actions"].map((h) => (
                   <th key={h} className="text-left px-5 py-3.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">
                     {h}
                   </th>
@@ -1017,7 +1030,7 @@ export default function AdminPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <td key={j} className="px-5 py-4 first:pl-6 last:pr-6">
                         <div className="h-4 bg-bg rounded-full animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
                       </td>
@@ -1026,7 +1039,7 @@ export default function AdminPage() {
                 ))
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center">
+                  <td colSpan={9} className="py-16 text-center">
                     <svg className="w-10 h-10 text-text-muted/30 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
@@ -1061,6 +1074,16 @@ export default function AdminPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="text-[13px] text-text-soft">{req.companyName || "—"}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {req.expectedDate ? (
+                        <span className="inline-flex items-center gap-1 text-[12px] font-medium text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
+                          {fmtDate(req.expectedDate)}
+                        </span>
+                      ) : (
+                        <span className="text-[12px] text-text-muted/50">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge status={req.status} />
