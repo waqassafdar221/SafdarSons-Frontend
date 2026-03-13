@@ -800,6 +800,10 @@ function CustomerLedgerView() {
       )
     : customers;
 
+  const totalCreditAmount = entries
+    .filter((entry) => entry.type === "credit")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
   return (
@@ -994,9 +998,17 @@ function CustomerLedgerView() {
 
           {/* Transaction History Table */}
           <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border-soft">
-              <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
-              <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
+            <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
+                <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-600 text-[11px] font-bold">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                </svg>
+                Total Credit: Rs {totalCreditAmount.toLocaleString()}
+              </span>
             </div>
             {loadingEntries ? (
               <div className="p-5 space-y-2">
