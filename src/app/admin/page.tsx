@@ -711,6 +711,13 @@ function CustomerLedgerView() {
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [addCustomerError, setAddCustomerError] = useState("");
 
+  // Edit customer form
+  const [showEditCustomer, setShowEditCustomer] = useState(false);
+  const [editCustomer, setEditCustomer] = useState({ name: "", phone: "", address: "" });
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editCustomerError, setEditCustomerError] = useState("");
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
+
   // Ledger entries
   const [entries, setEntries] = useState<api.LedgerEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -735,7 +742,17 @@ function CustomerLedgerView() {
   useEffect(() => {
     if (!selectedCustomer) return;
     const updated = customers.find((c) => c.id === selectedCustomer.id);
-    if (updated) setSelectedCustomer(updated);
+    if (updated) {
+      setSelectedCustomer(updated);
+      setEditCustomer({
+        name: updated.name,
+        phone: updated.phone ?? "",
+        address: updated.address ?? "",
+      });
+    } else {
+      setSelectedCustomer(null);
+      setShowEditCustomer(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customers]);
 
@@ -789,6 +806,57 @@ function CustomerLedgerView() {
       setAddEntryError(err instanceof Error ? err.message : "Failed");
     } finally {
       setAddingEntry(false);
+    }
+  }
+
+  function openEditCustomer() {
+    if (!selectedCustomer) return;
+    setEditCustomer({
+      name: selectedCustomer.name,
+      phone: selectedCustomer.phone ?? "",
+      address: selectedCustomer.address ?? "",
+    });
+    setEditCustomerError("");
+    setShowEditCustomer(true);
+  }
+
+  async function handleEditCustomer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    setEditCustomerError("");
+    if (!editCustomer.name.trim()) {
+      setEditCustomerError("Name is required.");
+      return;
+    }
+    setEditingCustomer(true);
+    try {
+      await api.updateCustomer(selectedCustomer.id, {
+        name: editCustomer.name.trim(),
+        phone: editCustomer.phone.trim(),
+        address: editCustomer.address.trim(),
+      });
+      setShowEditCustomer(false);
+    } catch (err) {
+      setEditCustomerError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setEditingCustomer(false);
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!selectedCustomer || deletingCustomer) return;
+    const ok = window.confirm(
+      `Remove ${selectedCustomer.name}? This will also delete all ledger transactions for this customer.`
+    );
+    if (!ok) return;
+    setDeletingCustomer(true);
+    try {
+      await api.deleteCustomer(selectedCustomer.id);
+      setSelectedCustomer(null);
+      setEntries([]);
+      setShowEditCustomer(false);
+    } finally {
+      setDeletingCustomer(false);
     }
   }
 
@@ -928,30 +996,97 @@ function CustomerLedgerView() {
                   )}
                 </div>
               </div>
-              <div className={`rounded-2xl px-5 py-3 text-right border ${
-                selectedCustomer.balance > 0
-                  ? "bg-rose-50 border-rose-100"
-                  : selectedCustomer.balance < 0
-                  ? "bg-emerald-50 border-emerald-100"
-                  : "bg-slate-50 border-slate-100"
-              }`}>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {selectedCustomer.balance > 0 ? "Owes" : selectedCustomer.balance < 0 ? "Advance Paid" : "Settled"}
-                </p>
-                <p className={`text-[22px] font-black mt-0.5 ${
+              <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
+                <div className={`rounded-2xl px-5 py-3 text-right border ${
                   selectedCustomer.balance > 0
-                    ? "text-rose-600"
+                    ? "bg-rose-50 border-rose-100"
                     : selectedCustomer.balance < 0
-                    ? "text-emerald-600"
-                    : "text-slate-400"
+                    ? "bg-emerald-50 border-emerald-100"
+                    : "bg-slate-50 border-slate-100"
                 }`}>
-                  {selectedCustomer.balance === 0
-                    ? "✔"
-                    : `Rs ${Math.abs(selectedCustomer.balance).toLocaleString()}`}
-                </p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                    {selectedCustomer.balance > 0 ? "Owes" : selectedCustomer.balance < 0 ? "Advance Paid" : "Settled"}
+                  </p>
+                  <p className={`text-[22px] font-black mt-0.5 ${
+                    selectedCustomer.balance > 0
+                      ? "text-rose-600"
+                      : selectedCustomer.balance < 0
+                      ? "text-emerald-600"
+                      : "text-slate-400"
+                  }`}>
+                    {selectedCustomer.balance === 0
+                      ? "✔"
+                      : `Rs ${Math.abs(selectedCustomer.balance).toLocaleString()}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={openEditCustomer}
+                    className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
+                  >
+                    Edit Customer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteCustomer}
+                    disabled={deletingCustomer}
+                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
+                  >
+                    {deletingCustomer ? "Removing..." : "Remove Customer"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+
+          {showEditCustomer && (
+            <form onSubmit={handleEditCustomer} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <h4 className="text-[13px] font-semibold text-text-dark">Edit Customer Details</h4>
+                <button
+                  type="button"
+                  onClick={() => { setShowEditCustomer(false); setEditCustomerError(""); }}
+                  className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {editCustomerError && (
+                <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editCustomerError}</p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input
+                  required
+                  value={editCustomer.name}
+                  onChange={(e) => setEditCustomer((v) => ({ ...v, name: e.target.value }))}
+                  placeholder="Customer Name *"
+                  className={inputCls}
+                />
+                <input
+                  value={editCustomer.phone}
+                  onChange={(e) => setEditCustomer((v) => ({ ...v, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className={inputCls}
+                />
+                <input
+                  value={editCustomer.address}
+                  onChange={(e) => setEditCustomer((v) => ({ ...v, address: e.target.value }))}
+                  placeholder="Address"
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={editingCustomer}
+                  className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors"
+                >
+                  {editingCustomer ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Add Transaction Form */}
           <form onSubmit={handleAddEntry} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">

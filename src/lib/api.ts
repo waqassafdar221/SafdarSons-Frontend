@@ -513,7 +513,23 @@ export async function addCustomer(data: CustomerCreate): Promise<Customer> {
   return docToCustomer(ref.id, snap.data() as Record<string, unknown>);
 }
 
+export async function updateCustomer(
+  id: string,
+  data: Partial<CustomerCreate>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (data.name !== undefined) payload.name = data.name;
+  if (data.phone !== undefined) payload.phone = data.phone || null;
+  if (data.address !== undefined) payload.address = data.address || null;
+  await updateDoc(doc(db, CUSTOMERS_COLLECTION, id), payload);
+}
+
 export async function deleteCustomer(id: string): Promise<void> {
+  const ledgerSnap = await getDocs(
+    query(collection(db, LEDGER_COLLECTION), where("customerId", "==", id))
+  );
+
+  await Promise.all(ledgerSnap.docs.map((entry) => deleteDoc(entry.ref)));
   await deleteDoc(doc(db, CUSTOMERS_COLLECTION, id));
 }
 
