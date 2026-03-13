@@ -803,9 +803,9 @@ function CustomerLedgerView() {
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
   return (
-    <div className="flex gap-5 items-start">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
       {/* ── Left: Customer List ── */}
-      <div className="w-72 shrink-0 space-y-3">
+      <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[14px] font-semibold text-text-dark">
             Customers <span className="text-text-muted font-normal">({customers.length})</span>
@@ -852,7 +852,7 @@ function CustomerLedgerView() {
         </div>
 
         {/* Customer List */}
-        <div className="space-y-1.5 max-h-[620px] overflow-y-auto pr-1">
+        <div className="space-y-1.5 max-h-[280px] lg:max-h-[620px] overflow-y-auto pr-1">
           {loadingCustomers ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-14 bg-white rounded-xl border border-border-soft animate-pulse" />
@@ -1046,7 +1046,7 @@ function CustomerLedgerView() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center py-24 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center py-12 lg:py-24 text-center bg-white rounded-2xl border border-border-soft shadow-sm">
           <svg className="w-14 h-14 text-text-muted/25 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
           </svg>
@@ -1808,7 +1808,8 @@ export default function AdminPage() {
       </div>
 
       {/* ── Tab Switcher ── */}
-      <div className="flex items-center gap-1 bg-bg rounded-xl p-1 w-fit">
+      <div className="w-full overflow-x-auto pb-1">
+        <div className="flex items-center gap-1 bg-bg rounded-xl p-1 w-max min-w-full sm:min-w-0 sm:w-fit">
         <button
           onClick={() => setActiveTab("requests")}
           className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
@@ -1869,6 +1870,7 @@ export default function AdminPage() {
             Customer Ledger
           </span>
         </button>
+        </div>
       </div>
 
       {/* ── Order Summary (grouped by Supplier) ── */}
