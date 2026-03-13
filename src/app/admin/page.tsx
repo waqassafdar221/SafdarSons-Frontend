@@ -845,6 +845,7 @@ function WeeklyScheduleView() {
   }
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" }) as api.DayOfWeek;
+  const isPastNoon = new Date().getHours() >= 12;
 
   const filteredSchedules = supplierSearch
     ? schedules.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
@@ -952,33 +953,58 @@ function WeeklyScheduleView() {
                         {booking.map((s) => {
                           const booked = isBookedThisWeek(s.lastBookedAt);
                           const isToggling = togglingBooking.has(s.id);
+                          // Lock toggle once booked and it's past 12 PM
+                          const locked = booked && isPastNoon;
                           return (
                             <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
                               <span className="text-[12px] font-semibold text-text-dark truncate flex-1">{s.supplierName}</span>
-                              <button
-                                onClick={() => toggleBooking(s)}
-                                disabled={isToggling}
-                                title={booked ? "Mark as pending" : "Mark as booked"}
-                                className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all disabled:opacity-50 ${
-                                  booked
-                                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                }`}
-                              >
-                                {isToggling ? (
-                                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
-                                ) : booked ? (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                    <span>Booked</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <span>Pending</span>
-                                  </>
-                                )}
-                              </button>
+
+                              {isToday ? (
+                                // ── Today's card: interactive toggle ──
+                                <button
+                                  onClick={() => !locked && toggleBooking(s)}
+                                  disabled={isToggling || locked}
+                                  title={
+                                    locked
+                                      ? "Booking locked after 12 PM"
+                                      : booked
+                                      ? "Unmark booking"
+                                      : "Mark as booked"
+                                  }
+                                  className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                                    locked
+                                      ? "cursor-not-allowed opacity-70"
+                                      : "disabled:opacity-50"
+                                  } ${
+                                    booked
+                                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                  }`}
+                                >
+                                  {isToggling ? (
+                                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                                  ) : booked ? (
+                                    <>
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                      <span>Booked</span>
+                                      {locked && (
+                                        <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                      <span>Pending</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : booked ? (
+                                // ── Other days: static Booked badge only ──
+                                <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                  <span>Booked</span>
+                                </span>
+                              ) : null /* no badge on other days if not yet booked */}
                             </div>
                           );
                         })}
