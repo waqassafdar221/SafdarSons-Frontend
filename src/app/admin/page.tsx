@@ -800,6 +800,11 @@ function CustomerLedgerView() {
       )
     : customers;
 
+  const totalCustomerCredit = customers.reduce(
+    (sum, customer) => sum + (customer.balance > 0 ? customer.balance : 0),
+    0
+  );
+
   const totalCreditAmount = entries
     .filter((entry) => entry.type === "credit")
     .reduce((sum, entry) => sum + entry.amount, 0);
@@ -810,6 +815,11 @@ function CustomerLedgerView() {
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
       {/* ── Left: Customer List ── */}
       <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
+        <div className="bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Total Customer Credit</p>
+          <p className="text-[16px] font-black text-rose-600 mt-0.5">Rs {totalCustomerCredit.toLocaleString()}</p>
+        </div>
+
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[14px] font-semibold text-text-dark">
             Customers <span className="text-text-muted font-normal">({customers.length})</span>
