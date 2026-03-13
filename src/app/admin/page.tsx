@@ -698,6 +698,366 @@ function OrderSummaryView({
   );
 }
 
+// ─── Customer Ledger View ────────────────────────────────────────────────────
+function CustomerLedgerView() {
+  const [customers, setCustomers] = useState<api.Customer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState<api.Customer | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+
+  // Add customer form
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" });
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [addCustomerError, setAddCustomerError] = useState("");
+
+  // Ledger entries
+  const [entries, setEntries] = useState<api.LedgerEntry[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Add transaction form
+  const [entryType, setEntryType] = useState<api.LedgerEntryType>("credit");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entryNote, setEntryNote] = useState("");
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [addEntryError, setAddEntryError] = useState("");
+
+  // Subscribe to customers
+  useEffect(() => {
+    const unsub = api.subscribeToCustomers((data) => {
+      setCustomers(data);
+      setLoadingCustomers(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Keep selectedCustomer in sync with live balance updates
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    const updated = customers.find((c) => c.id === selectedCustomer.id);
+    if (updated) setSelectedCustomer(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers]);
+
+  // Subscribe to selected customer's ledger entries
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    setLoadingEntries(true);
+    const unsub = api.subscribeToLedgerEntries(selectedCustomer.id, (data) => {
+      setEntries(data);
+      setLoadingEntries(false);
+    });
+    return () => unsub();
+  }, [selectedCustomer?.id]);
+
+  async function handleAddCustomer(e: React.FormEvent) {
+    e.preventDefault();
+    setAddCustomerError("");
+    if (!newCustomer.name.trim()) { setAddCustomerError("Name is required."); return; }
+    setAddingCustomer(true);
+    try {
+      await api.addCustomer(newCustomer);
+      setNewCustomer({ name: "", phone: "", address: "" });
+      setShowAddCustomer(false);
+    } catch (err) {
+      setAddCustomerError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setAddingCustomer(false);
+    }
+  }
+
+  async function handleAddEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    setAddEntryError("");
+    const amount = parseFloat(entryAmount);
+    if (!entryAmount || isNaN(amount) || amount <= 0) {
+      setAddEntryError("Enter a valid positive amount.");
+      return;
+    }
+    setAddingEntry(true);
+    try {
+      await api.addLedgerEntry({
+        customerId: selectedCustomer.id,
+        type: entryType,
+        amount,
+        note: entryNote.trim() || undefined,
+      });
+      setEntryAmount("");
+      setEntryNote("");
+    } catch (err) {
+      setAddEntryError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setAddingEntry(false);
+    }
+  }
+
+  const filteredCustomers = customerSearch
+    ? customers.filter(
+        (c) =>
+          c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+          (c.phone ?? "").includes(customerSearch)
+      )
+    : customers;
+
+  const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
+
+  return (
+    <div className="flex gap-5 items-start">
+      {/* ── Left: Customer List ── */}
+      <div className="w-72 shrink-0 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[14px] font-semibold text-text-dark">
+            Customers <span className="text-text-muted font-normal">({customers.length})</span>
+          </h3>
+          <button
+            onClick={() => { setShowAddCustomer((v) => !v); setAddCustomerError(""); }}
+            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={showAddCustomer ? "M6 18L18 6M6 6l12 12" : "M12 4.5v15m7.5-7.5h-15"} />
+            </svg>
+            {showAddCustomer ? "Cancel" : "Add"}
+          </button>
+        </div>
+
+        {/* Add Customer Form */}
+        {showAddCustomer && (
+          <form onSubmit={handleAddCustomer} className="bg-white border border-border-soft rounded-2xl p-4 space-y-3 shadow-sm">
+            {addCustomerError && (
+              <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addCustomerError}</p>
+            )}
+            <input required value={newCustomer.name} onChange={(e) => setNewCustomer((v) => ({ ...v, name: e.target.value }))} placeholder="Customer Name *" className={inputCls} />
+            <input value={newCustomer.phone} onChange={(e) => setNewCustomer((v) => ({ ...v, phone: e.target.value }))} placeholder="Phone (optional)" className={inputCls} />
+            <input value={newCustomer.address} onChange={(e) => setNewCustomer((v) => ({ ...v, address: e.target.value }))} placeholder="Address (optional)" className={inputCls} />
+            <button type="submit" disabled={addingCustomer} className="w-full py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+              {addingCustomer && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+              {addingCustomer ? "Saving…" : "Save Customer"}
+            </button>
+          </form>
+        )}
+
+        {/* Search */}
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input
+            type="text"
+            value={customerSearch}
+            onChange={(e) => setCustomerSearch(e.target.value)}
+            placeholder="Search by name or phone…"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+          />
+        </div>
+
+        {/* Customer List */}
+        <div className="space-y-1.5 max-h-[620px] overflow-y-auto pr-1">
+          {loadingCustomers ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-14 bg-white rounded-xl border border-border-soft animate-pulse" />
+            ))
+          ) : filteredCustomers.length === 0 ? (
+            <p className="text-[12px] text-text-muted text-center py-8">
+              {customerSearch ? "No customers match" : "No customers yet"}
+            </p>
+          ) : filteredCustomers.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedCustomer(c)}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                selectedCustomer?.id === c.id
+                  ? "bg-primary/5 border-primary/30 shadow-sm"
+                  : "bg-white border-border-soft hover:bg-bg"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-text-dark truncate">{c.name}</p>
+                  {c.phone && <p className="text-[11px] text-text-muted">{c.phone}</p>}
+                </div>
+                <span className={`text-[12px] font-bold shrink-0 ${
+                  c.balance > 0 ? "text-rose-600" : c.balance < 0 ? "text-emerald-600" : "text-slate-400"
+                }`}>
+                  {c.balance > 0
+                    ? `Rs ${c.balance.toLocaleString()}`
+                    : c.balance < 0
+                    ? `-Rs ${Math.abs(c.balance).toLocaleString()}`
+                    : "Settled"}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Right: Ledger Panel ── */}
+      {selectedCustomer ? (
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Customer Info + Balance */}
+          <div className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-[17px] font-bold text-text-dark">{selectedCustomer.name}</h3>
+                <div className="flex flex-wrap gap-4 mt-2">
+                  {selectedCustomer.phone && (
+                    <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>
+                      {selectedCustomer.phone}
+                    </span>
+                  )}
+                  {selectedCustomer.address && (
+                    <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                      {selectedCustomer.address}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={`rounded-2xl px-5 py-3 text-right border ${
+                selectedCustomer.balance > 0
+                  ? "bg-rose-50 border-rose-100"
+                  : selectedCustomer.balance < 0
+                  ? "bg-emerald-50 border-emerald-100"
+                  : "bg-slate-50 border-slate-100"
+              }`}>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                  {selectedCustomer.balance > 0 ? "Owes" : selectedCustomer.balance < 0 ? "Advance Paid" : "Settled"}
+                </p>
+                <p className={`text-[22px] font-black mt-0.5 ${
+                  selectedCustomer.balance > 0
+                    ? "text-rose-600"
+                    : selectedCustomer.balance < 0
+                    ? "text-emerald-600"
+                    : "text-slate-400"
+                }`}>
+                  {selectedCustomer.balance === 0
+                    ? "✔"
+                    : `Rs ${Math.abs(selectedCustomer.balance).toLocaleString()}`}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Add Transaction Form */}
+          <form onSubmit={handleAddEntry} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
+            <h4 className="text-[13px] font-semibold text-text-dark">Add Transaction</h4>
+            {addEntryError && (
+              <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addEntryError}</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Credit / Debit toggle */}
+              <div className="flex rounded-xl border border-border-soft overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEntryType("credit")}
+                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                    entryType === "credit" ? "bg-rose-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  }`}
+                >
+                  + Credit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType("debit")}
+                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                    entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  }`}
+                >
+                  − Debit
+                </button>
+              </div>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                value={entryAmount}
+                onChange={(e) => setEntryAmount(e.target.value)}
+                placeholder="Amount (Rs)"
+                className={inputCls}
+              />
+              <input
+                value={entryNote}
+                onChange={(e) => setEntryNote(e.target.value)}
+                placeholder="Note / Description (optional)"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button type="submit" disabled={addingEntry} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center gap-2">
+                {addingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                {addingEntry ? "Saving…" : "Add Transaction"}
+              </button>
+            </div>
+          </form>
+
+          {/* Transaction History Table */}
+          <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border-soft">
+              <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
+              <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
+            </div>
+            {loadingEntries ? (
+              <div className="p-5 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-10 bg-bg rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-[13px] text-text-muted">No transactions yet. Add one above.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-bg/60">
+                      {["Date", "Type", "Amount", "Note"].map((h) => (
+                        <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-soft">
+                    {entries.map((entry) => (
+                      <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"
+                          }`}>
+                            {entry.type === "credit" ? "+ Credit" : "− Debit"}
+                          </span>
+                        </td>
+                        <td className={`px-5 py-3.5 text-[13px] font-bold ${
+                          entry.type === "credit" ? "text-rose-600" : "text-emerald-600"
+                        }`}>
+                          Rs {entry.amount.toLocaleString()}
+                        </td>
+                        <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
+                          {entry.note ?? <span className="text-text-muted italic">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center py-24 text-center">
+          <svg className="w-14 h-14 text-text-muted/25 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+          <p className="text-[15px] font-semibold text-text-dark">Select a customer</p>
+          <p className="text-[12px] text-text-muted mt-1">Click any customer on the left to view and manage their ledger</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Weekly Schedule View ───────────────────────────────────────────────────
 const DAYS_OF_WEEK: api.DayOfWeek[] = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
@@ -1237,7 +1597,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers">("requests");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -1494,6 +1854,21 @@ export default function AdminPage() {
             Weekly Schedule
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab("customers")}
+          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+            activeTab === "customers"
+              ? "bg-white text-text-dark shadow-sm"
+              : "text-text-muted hover:text-text-dark"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+            </svg>
+            Customer Ledger
+          </span>
+        </button>
       </div>
 
       {/* ── Order Summary (grouped by Supplier) ── */}
@@ -1504,6 +1879,11 @@ export default function AdminPage() {
       {/* ── Weekly Schedule ── */}
       {activeTab === "weeklySchedule" && (
         <WeeklyScheduleView />
+      )}
+
+      {/* ── Customer Ledger ── */}
+      {activeTab === "customers" && (
+        <CustomerLedgerView />
       )}
 
       {/* ── Requests Table ── */}

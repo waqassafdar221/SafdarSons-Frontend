@@ -18,6 +18,7 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  runTransaction,
   type QueryConstraint,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -439,5 +440,133 @@ export function subscribeToSupplierSchedules(
       .map((d) => docToSchedule(d.id, d.data() as Record<string, unknown>))
       .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
     onChange(schedules);
+  });
+}
+
+// ─── Customer Ledger ──────────────────────────────────────────────────────────
+export type LedgerEntryType = "credit" | "debit";
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  /** Positive = customer owes us. Negative = we owe customer. */
+  balance: number;
+  createdAt?: string;
+}
+
+export interface CustomerCreate {
+  name: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  customerId: string;
+  type: LedgerEntryType;
+  amount: number;
+  note?: string;
+  createdAt?: string;
+}
+
+export interface LedgerEntryCreate {
+  customerId: string;
+  type: LedgerEntryType;
+  amount: number;
+  note?: string;
+}
+
+const CUSTOMERS_COLLECTION = "customers";
+const LEDGER_COLLECTION    = "ledgerEntries";
+
+function docToCustomer(id: string, data: Record<string, unknown>): Customer {
+  return {
+    id,
+    name:      (data.name    as string) ?? "",
+    phone:     (data.phone   as string) ?? undefined,
+    address:   (data.address as string) ?? undefined,
+    balance:   (data.balance as number) ?? 0,
+    createdAt: tsToString(data.createdAt),
+  };
+}
+
+function docToLedgerEntry(id: string, data: Record<string, unknown>): LedgerEntry {
+  return {
+    id,
+    customerId: (data.customerId as string)         ?? "",
+    type:       (data.type       as LedgerEntryType) ?? "credit",
+    amount:     (data.amount     as number)          ?? 0,
+    note:       (data.note       as string)          ?? undefined,
+    createdAt:  tsToString(data.createdAt),
+  };
+}
+
+export async function addCustomer(data: CustomerCreate): Promise<Customer> {
+  const ref = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
+    ...data,
+    balance: 0,
+    createdAt: serverTimestamp(),
+  });
+  const snap = await getDoc(doc(db, CUSTOMERS_COLLECTION, ref.id));
+  return docToCustomer(ref.id, snap.data() as Record<string, unknown>);
+}
+
+export async function deleteCustomer(id: string): Promise<void> {
+  await deleteDoc(doc(db, CUSTOMERS_COLLECTION, id));
+}
+
+export function subscribeToCustomers(
+  onChange: (customers: Customer[]) => void
+): () => void {
+  return onSnapshot(collection(db, CUSTOMERS_COLLECTION), (snap) => {
+    const customers = snap.docs
+      .map((d) => docToCustomer(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    onChange(customers);
+  });
+}
+
+/**
+ * Atomically adds a ledger entry and updates the customer's balance.
+ * Credit increases balance (customer owes more); Debit decreases it.
+ */
+export async function addLedgerEntry(data: LedgerEntryCreate): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const customerRef  = doc(db, CUSTOMERS_COLLECTION, data.customerId);
+    const customerSnap = await tx.get(customerRef);
+    const current      = (customerSnap.data()?.balance as number) ?? 0;
+    const delta        = data.type === "credit" ? data.amount : -data.amount;
+    tx.update(customerRef, { balance: current + delta });
+    const ledgerRef = doc(collection(db, LEDGER_COLLECTION));
+    const payload: Record<string, unknown> = {
+      customerId: data.customerId,
+      type:       data.type,
+      amount:     data.amount,
+      createdAt:  serverTimestamp(),
+    };
+    if (data.note) payload.note = data.note;
+    tx.set(ledgerRef, payload);
+  });
+}
+
+export function subscribeToLedgerEntries(
+  customerId: string,
+  onChange: (entries: LedgerEntry[]) => void
+): () => void {
+  const q = query(
+    collection(db, LEDGER_COLLECTION),
+    where("customerId", "==", customerId)
+  );
+  return onSnapshot(q, (snap) => {
+    const entries = snap.docs
+      .map((d) => docToLedgerEntry(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(entries);
   });
 }
