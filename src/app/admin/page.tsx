@@ -1363,6 +1363,7 @@ function WeeklyScheduleView() {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" }) as api.DayOfWeek;
   const isPastNoon = new Date().getHours() >= 12;
+  const [expandedDay, setExpandedDay] = useState<api.DayOfWeek | null>(today);
 
   const filteredSchedules = supplierSearch
     ? schedules.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
@@ -1445,18 +1446,35 @@ function WeeklyScheduleView() {
           {DAYS_OF_WEEK.map((day) => {
             const c = DAY_COLORS[day];
             const isToday = day === today;
+            const isExpanded = day === expandedDay;
             const booking = schedules.filter((s) => s.bookingDay === day);
             const supply  = schedules.filter((s) => s.supplyDay  === day);
 
             return (
-              <div key={day} className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden ${isToday ? "ring-2 ring-offset-1 ring-primary/40 shadow-md" : "shadow-sm"}`}>
-                <div className={`px-4 py-3 flex items-center justify-between border-b ${c.border}`}>
+              <div key={day} className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden transition-all ${isExpanded ? "shadow-md" : "shadow-sm"} ${isToday ? "ring-2 ring-offset-1 ring-primary/40" : ""}`}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedDay((prev) => {
+                      if (prev === day) return day === today ? day : null;
+                      return day;
+                    })
+                  }
+                  className={`w-full px-4 py-3 flex items-center justify-between ${isExpanded ? `border-b ${c.border}` : ""} hover:bg-white/30 transition-colors`}
+                >
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${c.dot}`} />
                     <h3 className={`text-[14px] font-bold ${c.text}`}>{day}</h3>
                   </div>
-                  {isToday && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>}
-                </div>
+                  <div className="flex items-center gap-2">
+                    {isToday && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>}
+                    <svg className={`w-4 h-4 ${c.text} transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+
+                {isExpanded ? (
                 <div className="p-4 space-y-4">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
@@ -1548,6 +1566,15 @@ function WeeklyScheduleView() {
                     )}
                   </div>
                 </div>
+                ) : (
+                  <div className="px-4 pb-3">
+                    <div className="bg-white/60 rounded-xl px-3 py-2">
+                      <p className="text-[11px] text-text-muted">
+                        <span className="font-semibold text-text-dark">{booking.length}</span> booking · <span className="font-semibold text-text-dark">{supply.length}</span> supply
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1578,10 +1605,10 @@ function WeeklyScheduleView() {
               />
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-[380px] overflow-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-bg/60">
+                <tr className="bg-bg/60 sticky top-0 z-10">
                   {["Supplier / Company", "Booking Day", "Supply Day", "Actions"].map((h) => (
                     <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
                   ))}
