@@ -913,19 +913,19 @@ function CustomerLedgerView() {
 <html><head><meta charset="utf-8"><title>Receipt - ${selectedCustomer.name}</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:'Courier New',Courier,monospace; font-size:11px; width:72mm; margin:0 auto; padding:4mm 3mm; color:#000; }
+body { font-family:'Tahoma','Arial',Helvetica,sans-serif; font-size:11.5px; line-height:1.55; width:72mm; margin:0 auto; padding:4mm 3mm; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 .center { text-align:center; }
-.divider { border-top:1px dashed #000; margin:5px 0; }
-.store-name { font-size:14px; font-weight:bold; text-align:center; line-height:1.5; }
-.sub { font-size:10px; text-align:center; }
-table { width:100%; border-collapse:collapse; margin-top:4px; }
-th { font-size:9px; text-align:left; border-bottom:1px solid #000; padding:2px 1px; }
-td { font-size:10px; padding:2px 1px; vertical-align:top; word-break:break-word; }
-.bold { font-weight:bold; }
-.totals-row td { font-weight:bold; border-top:1px solid #000; padding-top:4px; }
-.balance-box { margin-top:5px; padding:5px 4px; border:1px solid #000; text-align:center; }
-.balance-label { font-size:9px; font-weight:bold; letter-spacing:1px; }
-.balance-amount { font-size:16px; font-weight:bold; margin-top:2px; }
+.divider { border-top:1px dashed #000; margin:6px 0; }
+.store-name { font-size:14.5px; font-weight:700; text-align:center; line-height:1.55; letter-spacing:0.2px; }
+.sub { font-size:10.5px; text-align:center; }
+table { width:100%; border-collapse:collapse; margin-top:5px; }
+th { font-size:9.5px; font-weight:700; text-align:left; border-bottom:1.5px solid #000; padding:3px 2px; letter-spacing:0.3px; text-transform:uppercase; }
+td { font-size:10.5px; padding:3px 2px; vertical-align:top; word-break:break-word; line-height:1.45; }
+.bold { font-weight:700; }
+.totals-row td { font-weight:700; border-top:1.5px solid #000; padding-top:5px; }
+.balance-box { margin-top:6px; padding:6px 4px; border:1.5px solid #000; text-align:center; }
+.balance-label { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
+.balance-amount { font-size:17px; font-weight:700; margin-top:3px; letter-spacing:0.5px; }
 @media print { body { width:72mm; } @page { size:72mm auto; margin:2mm; } }
 </style></head><body>
 <p class="store-name">Safdar &amp; Sons Pharma<br>+ Veterinary Store</p>
