@@ -732,6 +732,23 @@ function CustomerLedgerView() {
   const [addingEntry, setAddingEntry] = useState(false);
   const [addEntryError, setAddEntryError] = useState("");
 
+  // Edit transaction form
+  const [editEntryTarget, setEditEntryTarget] = useState<api.LedgerEntry | null>(null);
+  const [editEntryForm, setEditEntryForm] = useState<{
+    type: api.LedgerEntryType;
+    amount: string;
+    note: string;
+    password: string;
+  }>({
+    type: "credit",
+    amount: "",
+    note: "",
+    password: "",
+  });
+  const [editEntryError, setEditEntryError] = useState("");
+  const [editingEntry, setEditingEntry] = useState(false);
+  const [showEditEntryPassword, setShowEditEntryPassword] = useState(false);
+
   // Subscribe to customers
   useEffect(() => {
     const unsub = api.subscribeToCustomers((data) => {
@@ -860,6 +877,57 @@ function CustomerLedgerView() {
       setShowEditCustomer(false);
     } finally {
       setDeletingCustomer(false);
+    }
+  }
+
+  function openEditEntry(entry: api.LedgerEntry) {
+    setEditEntryTarget(entry);
+    setEditEntryForm({
+      type: entry.type,
+      amount: String(entry.amount),
+      note: entry.note ?? "",
+      password: "",
+    });
+    setEditEntryError("");
+    setShowEditEntryPassword(false);
+  }
+
+  async function handleEditEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedCustomer || !editEntryTarget) return;
+
+    setEditEntryError("");
+    const amount = parseFloat(editEntryForm.amount);
+    if (!editEntryForm.amount || isNaN(amount) || amount <= 0) {
+      setEditEntryError("Enter a valid positive amount.");
+      return;
+    }
+    if (!editEntryForm.password.trim()) {
+      setEditEntryError("Admin password is required.");
+      return;
+    }
+
+    setEditingEntry(true);
+    try {
+      await api.reauthenticate(editEntryForm.password);
+      await api.updateLedgerEntry(editEntryTarget.id, {
+        customerId: selectedCustomer.id,
+        type: editEntryForm.type,
+        amount,
+        note: editEntryForm.note.trim() || undefined,
+      });
+      setEditEntryTarget(null);
+      setEditEntryError("");
+      setShowEditEntryPassword(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
+      setEditEntryError(
+        msg.includes("auth") || msg.includes("password") || msg.includes("wrong") || msg.includes("credential")
+          ? "Incorrect password. Please try again."
+          : msg
+      );
+    } finally {
+      setEditingEntry(false);
     }
   }
 
@@ -1296,7 +1364,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 <table className="w-full">
                   <thead>
                     <tr className="bg-bg/60">
-                      {["Date", "Type", "Amount", "Note"].map((h) => (
+                      {["Date", "Type", "Amount", "Note", "Actions"].map((h) => (
                         <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
                       ))}
                     </tr>
@@ -1320,6 +1388,16 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                         <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
                           {entry.note ?? <span className="text-text-muted italic">—</span>}
                         </td>
+                        <td className="px-5 py-3.5 pr-6">
+                          <button
+                            type="button"
+                            onClick={() => openEditEntry(entry)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                            Edit
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1327,6 +1405,126 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
               </div>
             )}
           </div>
+
+          {editEntryTarget && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                onClick={() => {
+                  if (editingEntry) return;
+                  setEditEntryTarget(null);
+                  setEditEntryError("");
+                }}
+              />
+              <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+                <div>
+                  <h3 className="text-[15px] font-semibold text-text-dark">Edit Transaction</h3>
+                  <p className="text-[12px] text-text-muted mt-0.5">Enter your admin password to update this ledger entry.</p>
+                </div>
+
+                <div className="bg-bg rounded-xl px-4 py-3">
+                  <p className="text-[13px] font-semibold text-text-dark">{selectedCustomer.name}</p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {fmt(editEntryTarget.createdAt)} · {editEntryTarget.type === "credit" ? "+ Credit" : "− Debit"} · Rs {editEntryTarget.amount.toLocaleString()}
+                  </p>
+                </div>
+
+                {editEntryError && (
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+                    <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                    <p className="text-[12px] text-red-600">{editEntryError}</p>
+                  </div>
+                )}
+
+                <form onSubmit={handleEditEntry} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-1 flex rounded-xl border border-border-soft overflow-hidden h-fit">
+                      <button
+                        type="button"
+                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "credit" }))}
+                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                          editEntryForm.type === "credit" ? "bg-rose-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                        }`}
+                      >
+                        + Credit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "debit" }))}
+                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                          editEntryForm.type === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                        }`}
+                      >
+                        − Debit
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={editEntryForm.amount}
+                      onChange={(e) => setEditEntryForm((v) => ({ ...v, amount: e.target.value }))}
+                      placeholder="Amount (Rs)"
+                      className={inputCls}
+                    />
+                    <input
+                      value={editEntryForm.note}
+                      onChange={(e) => setEditEntryForm((v) => ({ ...v, note: e.target.value }))}
+                      placeholder="Note / Description"
+                      className={inputCls}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[12px] font-medium text-text-dark">Admin Password *</label>
+                    <div className="relative">
+                      <input
+                        required
+                        type={showEditEntryPassword ? "text" : "password"}
+                        value={editEntryForm.password}
+                        onChange={(e) => setEditEntryForm((v) => ({ ...v, password: e.target.value }))}
+                        placeholder="Enter your password"
+                        className={inputCls + " pr-10"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEditEntryPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark"
+                      >
+                        {showEditEntryPassword
+                          ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                          : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        }
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingEntry) return;
+                        setEditEntryTarget(null);
+                        setEditEntryError("");
+                      }}
+                      className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={editingEntry}
+                      className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {editingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                      {editingEntry ? "Verifying…" : "Verify & Save"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center py-12 lg:py-24 text-center bg-white rounded-2xl border border-border-soft shadow-sm">

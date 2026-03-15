@@ -309,7 +309,7 @@ export async function notifyCustomer(id: string): Promise<NotifyResponse> {
 
   const text = encodeURIComponent(
     `Assalamu Alaikum ${req.customerName},\n\n` +
-    `Your medicine *${req.medicineName}*` +
+    `Your medicine *${req.medicineName}* ` +
     `has arrived at *Safdar & Sons Pharma + Veterinary Store*.\n\n` +
     `Please visit us at your earliest convenience.\n\n` +
     `Near Ravi Town, NawanKot Road, Khanpur\n` +
@@ -564,6 +564,43 @@ export async function addLedgerEntry(data: LedgerEntryCreate): Promise<void> {
     };
     if (data.note) payload.note = data.note;
     tx.set(ledgerRef, payload);
+  });
+}
+
+/**
+ * Atomically updates a ledger entry and adjusts the customer's balance by the
+ * delta between the old entry and the new entry.
+ */
+export async function updateLedgerEntry(
+  id: string,
+  data: LedgerEntryCreate
+): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const ledgerRef    = doc(db, LEDGER_COLLECTION, id);
+    const ledgerSnap   = await tx.get(ledgerRef);
+    if (!ledgerSnap.exists()) throw new Error("Transaction not found.");
+
+    const existing = docToLedgerEntry(id, ledgerSnap.data() as Record<string, unknown>);
+    if (existing.customerId !== data.customerId) {
+      throw new Error("Changing transaction customer is not allowed.");
+    }
+
+    const customerRef  = doc(db, CUSTOMERS_COLLECTION, data.customerId);
+    const customerSnap = await tx.get(customerRef);
+    if (!customerSnap.exists()) throw new Error("Customer not found.");
+
+    const currentBalance = (customerSnap.data()?.balance as number) ?? 0;
+    const oldDelta       = existing.type === "credit" ? existing.amount : -existing.amount;
+    const newDelta       = data.type === "credit" ? data.amount : -data.amount;
+
+    tx.update(customerRef, { balance: currentBalance + newDelta - oldDelta });
+
+    const payload: Record<string, unknown> = {
+      type:   data.type,
+      amount: data.amount,
+      note:   data.note || null,
+    };
+    tx.update(ledgerRef, payload);
   });
 }
 
