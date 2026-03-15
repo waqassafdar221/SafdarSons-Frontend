@@ -1547,13 +1547,13 @@ function EmployeeLedgerView() {
 
   // Add employee form
   const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", phone: "", address: "" });
+  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [addEmployeeError, setAddEmployeeError] = useState("");
 
   // Edit employee form
   const [showEditEmployee, setShowEditEmployee] = useState(false);
-  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", phone: "", address: "" });
+  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
   const [editingEmployee, setEditingEmployee] = useState(false);
   const [editEmployeeError, setEditEmployeeError] = useState("");
   const [deletingEmployee, setDeletingEmployee] = useState(false);
@@ -1585,6 +1585,7 @@ function EmployeeLedgerView() {
       setEditEmployee({
         name: updated.name,
         joiningDate: updated.joiningDate,
+        salary: String(updated.salary ?? ""),
         phone: updated.phone ?? "",
         address: updated.address ?? "",
       });
@@ -1616,16 +1617,22 @@ function EmployeeLedgerView() {
       setAddEmployeeError("Joining date is required.");
       return;
     }
+    const salaryNum = parseFloat(newEmployee.salary);
+    if (!newEmployee.salary || isNaN(salaryNum) || salaryNum <= 0) {
+      setAddEmployeeError("Enter a valid monthly salary.");
+      return;
+    }
 
     setAddingEmployee(true);
     try {
       await api.addEmployee({
         name: newEmployee.name.trim(),
         joiningDate: newEmployee.joiningDate,
+        salary: salaryNum,
         phone: newEmployee.phone.trim(),
         address: newEmployee.address.trim(),
       });
-      setNewEmployee({ name: "", joiningDate: "", phone: "", address: "" });
+      setNewEmployee({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
       setShowAddEmployee(false);
     } catch (err) {
       setAddEmployeeError(err instanceof Error ? err.message : "Failed");
@@ -1639,6 +1646,7 @@ function EmployeeLedgerView() {
     setEditEmployee({
       name: selectedEmployee.name,
       joiningDate: selectedEmployee.joiningDate,
+      salary: String(selectedEmployee.salary ?? ""),
       phone: selectedEmployee.phone ?? "",
       address: selectedEmployee.address ?? "",
     });
@@ -1659,12 +1667,18 @@ function EmployeeLedgerView() {
       setEditEmployeeError("Joining date is required.");
       return;
     }
+    const editSalaryNum = parseFloat(editEmployee.salary);
+    if (!editEmployee.salary || isNaN(editSalaryNum) || editSalaryNum <= 0) {
+      setEditEmployeeError("Enter a valid monthly salary.");
+      return;
+    }
 
     setEditingEmployee(true);
     try {
       await api.updateEmployee(selectedEmployee.id, {
         name: editEmployee.name.trim(),
         joiningDate: editEmployee.joiningDate,
+        salary: editSalaryNum,
         phone: editEmployee.phone.trim(),
         address: editEmployee.address.trim(),
       });
@@ -1781,6 +1795,19 @@ function EmployeeLedgerView() {
               onChange={(e) => setNewEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
               className={inputCls}
             />
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">Rs</span>
+              <input
+                required
+                type="number"
+                min="1"
+                step="1"
+                value={newEmployee.salary}
+                onChange={(e) => setNewEmployee((v) => ({ ...v, salary: e.target.value }))}
+                placeholder="Monthly Salary *"
+                className={inputCls + " pl-9"}
+              />
+            </div>
             <input
               value={newEmployee.phone}
               onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))}
@@ -1835,6 +1862,7 @@ function EmployeeLedgerView() {
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
                   <p className="text-[11px] text-text-muted">Joined: {fmtDate(employee.joiningDate)}</p>
+                  {employee.salary > 0 && <p className="text-[10px] text-blue-600 font-semibold">Salary: Rs {employee.salary.toLocaleString()}</p>}
                 </div>
                 <span className={`text-[12px] font-bold shrink-0 ${
                   employee.balance > 0 ? "text-blue-700" : employee.balance < 0 ? "text-emerald-600" : "text-slate-400"
@@ -1858,10 +1886,34 @@ function EmployeeLedgerView() {
               <div>
                 <h3 className="text-[17px] font-bold text-text-dark">{selectedEmployee.name}</h3>
                 <div className="flex flex-wrap gap-4 mt-2">
-                  <span className="text-[12px] text-text-muted">Joining Date: {fmtDate(selectedEmployee.joiningDate)}</span>
-                  {selectedEmployee.phone && <span className="text-[12px] text-text-muted">Phone: {selectedEmployee.phone}</span>}
-                  {selectedEmployee.address && <span className="text-[12px] text-text-muted">Address: {selectedEmployee.address}</span>}
+                  <span className="text-[12px] text-text-muted">Joined: {fmtDate(selectedEmployee.joiningDate)}</span>
+                  {selectedEmployee.phone && <span className="text-[12px] text-text-muted">📞 {selectedEmployee.phone}</span>}
+                  {selectedEmployee.address && <span className="text-[12px] text-text-muted">📍 {selectedEmployee.address}</span>}
                 </div>
+                {selectedEmployee.salary > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-blue-400">Monthly Salary</p>
+                      <p className="text-[14px] font-black text-blue-700">Rs {selectedEmployee.salary.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500">Advances Taken</p>
+                      <p className="text-[14px] font-black text-amber-700">Rs {selectedEmployee.balance > 0 ? selectedEmployee.balance.toLocaleString() : "0"}</p>
+                    </div>
+                    <div className={`rounded-xl px-4 py-2 border ${
+                      selectedEmployee.salary - selectedEmployee.balance > 0
+                        ? "bg-emerald-50 border-emerald-100"
+                        : "bg-red-50 border-red-100"
+                    }`}>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Net Salary Remaining</p>
+                      <p className={`text-[14px] font-black ${
+                        selectedEmployee.salary - selectedEmployee.balance > 0 ? "text-emerald-700" : "text-red-600"
+                      }`}>
+                        Rs {Math.max(0, selectedEmployee.salary - selectedEmployee.balance).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
@@ -1873,7 +1925,7 @@ function EmployeeLedgerView() {
                     : "bg-slate-50 border-slate-100"
                 }`}>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                    {selectedEmployee.balance > 0 ? "Payable to Employee" : selectedEmployee.balance < 0 ? "Advance with Company" : "Settled"}
+                    {selectedEmployee.balance > 0 ? "Total Advance Taken" : selectedEmployee.balance < 0 ? "Overpaid" : "No Advance"}
                   </p>
                   <p className={`text-[22px] font-black mt-0.5 ${
                     selectedEmployee.balance > 0
@@ -1925,7 +1977,7 @@ function EmployeeLedgerView() {
               {editEmployeeError && (
                 <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editEmployeeError}</p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <input
                   required
                   value={editEmployee.name}
@@ -1940,6 +1992,19 @@ function EmployeeLedgerView() {
                   onChange={(e) => setEditEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
                   className={inputCls}
                 />
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">Rs</span>
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={editEmployee.salary}
+                    onChange={(e) => setEditEmployee((v) => ({ ...v, salary: e.target.value }))}
+                    placeholder="Monthly Salary *"
+                    className={inputCls + " pl-9"}
+                  />
+                </div>
                 <input
                   value={editEmployee.phone}
                   onChange={(e) => setEditEmployee((v) => ({ ...v, phone: e.target.value }))}

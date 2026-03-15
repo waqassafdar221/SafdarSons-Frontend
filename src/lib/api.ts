@@ -629,9 +629,10 @@ export interface Employee {
   id: string;
   name: string;
   joiningDate: string;
+  salary: number;
   phone?: string;
   address?: string;
-  /** Positive = company payable to employee. Negative = employee advance. */
+  /** Running balance: credit increases (advance taken), debit decreases (paid out). */
   balance: number;
   createdAt?: string;
 }
@@ -639,6 +640,7 @@ export interface Employee {
 export interface EmployeeCreate {
   name: string;
   joiningDate: string;
+  salary: number;
   phone?: string;
   address?: string;
 }
@@ -667,6 +669,7 @@ function docToEmployee(id: string, data: Record<string, unknown>): Employee {
     id,
     name:        (data.name        as string) ?? "",
     joiningDate: (data.joiningDate as string) ?? "",
+    salary:      (data.salary      as number) ?? 0,
     phone:       (data.phone       as string) ?? undefined,
     address:     (data.address     as string) ?? undefined,
     balance:     (data.balance     as number) ?? 0,
@@ -705,6 +708,7 @@ export async function updateEmployee(
   const payload: Record<string, unknown> = {};
   if (data.name !== undefined) payload.name = data.name;
   if (data.joiningDate !== undefined) payload.joiningDate = data.joiningDate;
+  if (data.salary !== undefined) payload.salary = data.salary;
   if (data.phone !== undefined) payload.phone = data.phone || null;
   if (data.address !== undefined) payload.address = data.address || null;
   await updateDoc(doc(db, EMPLOYEES_COLLECTION, id), payload);
