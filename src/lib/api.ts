@@ -623,3 +623,154 @@ export function subscribeToLedgerEntries(
     onChange(entries);
   });
 }
+
+// ─── Employee Ledger ─────────────────────────────────────────────────────────
+export interface Employee {
+  id: string;
+  name: string;
+  joiningDate: string;
+  phone?: string;
+  address?: string;
+  /** Positive = company payable to employee. Negative = employee advance. */
+  balance: number;
+  createdAt?: string;
+}
+
+export interface EmployeeCreate {
+  name: string;
+  joiningDate: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface EmployeeLedgerEntry {
+  id: string;
+  employeeId: string;
+  type: LedgerEntryType;
+  amount: number;
+  note?: string;
+  createdAt?: string;
+}
+
+export interface EmployeeLedgerEntryCreate {
+  employeeId: string;
+  type: LedgerEntryType;
+  amount: number;
+  note?: string;
+}
+
+const EMPLOYEES_COLLECTION       = "employees";
+const EMPLOYEE_LEDGER_COLLECTION = "employeeLedgerEntries";
+
+function docToEmployee(id: string, data: Record<string, unknown>): Employee {
+  return {
+    id,
+    name:        (data.name        as string) ?? "",
+    joiningDate: (data.joiningDate as string) ?? "",
+    phone:       (data.phone       as string) ?? undefined,
+    address:     (data.address     as string) ?? undefined,
+    balance:     (data.balance     as number) ?? 0,
+    createdAt:   tsToString(data.createdAt),
+  };
+}
+
+function docToEmployeeLedgerEntry(
+  id: string,
+  data: Record<string, unknown>
+): EmployeeLedgerEntry {
+  return {
+    id,
+    employeeId: (data.employeeId as string)        ?? "",
+    type:       (data.type       as LedgerEntryType) ?? "credit",
+    amount:     (data.amount     as number)          ?? 0,
+    note:       (data.note       as string)          ?? undefined,
+    createdAt:  tsToString(data.createdAt),
+  };
+}
+
+export async function addEmployee(data: EmployeeCreate): Promise<Employee> {
+  const ref = await addDoc(collection(db, EMPLOYEES_COLLECTION), {
+    ...data,
+    balance: 0,
+    createdAt: serverTimestamp(),
+  });
+  const snap = await getDoc(doc(db, EMPLOYEES_COLLECTION, ref.id));
+  return docToEmployee(ref.id, snap.data() as Record<string, unknown>);
+}
+
+export async function updateEmployee(
+  id: string,
+  data: Partial<EmployeeCreate>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (data.name !== undefined) payload.name = data.name;
+  if (data.joiningDate !== undefined) payload.joiningDate = data.joiningDate;
+  if (data.phone !== undefined) payload.phone = data.phone || null;
+  if (data.address !== undefined) payload.address = data.address || null;
+  await updateDoc(doc(db, EMPLOYEES_COLLECTION, id), payload);
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+  const ledgerSnap = await getDocs(
+    query(collection(db, EMPLOYEE_LEDGER_COLLECTION), where("employeeId", "==", id))
+  );
+
+  await Promise.all(ledgerSnap.docs.map((entry) => deleteDoc(entry.ref)));
+  await deleteDoc(doc(db, EMPLOYEES_COLLECTION, id));
+}
+
+export function subscribeToEmployees(
+  onChange: (employees: Employee[]) => void
+): () => void {
+  return onSnapshot(collection(db, EMPLOYEES_COLLECTION), (snap) => {
+    const employees = snap.docs
+      .map((d) => docToEmployee(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    onChange(employees);
+  });
+}
+
+/**
+ * Credit increases payable to employee, debit decreases it.
+ */
+export async function addEmployeeLedgerEntry(
+  data: EmployeeLedgerEntryCreate
+): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const employeeRef  = doc(db, EMPLOYEES_COLLECTION, data.employeeId);
+    const employeeSnap = await tx.get(employeeRef);
+    const current      = (employeeSnap.data()?.balance as number) ?? 0;
+    const delta        = data.type === "credit" ? data.amount : -data.amount;
+    tx.update(employeeRef, { balance: current + delta });
+
+    const ledgerRef = doc(collection(db, EMPLOYEE_LEDGER_COLLECTION));
+    const payload: Record<string, unknown> = {
+      employeeId: data.employeeId,
+      type:       data.type,
+      amount:     data.amount,
+      createdAt:  serverTimestamp(),
+    };
+    if (data.note) payload.note = data.note;
+    tx.set(ledgerRef, payload);
+  });
+}
+
+export function subscribeToEmployeeLedgerEntries(
+  employeeId: string,
+  onChange: (entries: EmployeeLedgerEntry[]) => void
+): () => void {
+  const q = query(
+    collection(db, EMPLOYEE_LEDGER_COLLECTION),
+    where("employeeId", "==", employeeId)
+  );
+  return onSnapshot(q, (snap) => {
+    const entries = snap.docs
+      .map((d) => docToEmployeeLedgerEntry(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(entries);
+  });
+}

@@ -1539,6 +1539,547 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
   );
 }
 
+function EmployeeLedgerView() {
+  const [employees, setEmployees] = useState<api.Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [selectedEmployee, setSelectedEmployee] = useState<api.Employee | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+
+  // Add employee form
+  const [showAddEmployee, setShowAddEmployee] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", phone: "", address: "" });
+  const [addingEmployee, setAddingEmployee] = useState(false);
+  const [addEmployeeError, setAddEmployeeError] = useState("");
+
+  // Edit employee form
+  const [showEditEmployee, setShowEditEmployee] = useState(false);
+  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", phone: "", address: "" });
+  const [editingEmployee, setEditingEmployee] = useState(false);
+  const [editEmployeeError, setEditEmployeeError] = useState("");
+  const [deletingEmployee, setDeletingEmployee] = useState(false);
+
+  // Ledger entries
+  const [entries, setEntries] = useState<api.EmployeeLedgerEntry[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Add transaction form
+  const [entryType, setEntryType] = useState<api.LedgerEntryType>("credit");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entryNote, setEntryNote] = useState("");
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [addEntryError, setAddEntryError] = useState("");
+
+  useEffect(() => {
+    const unsub = api.subscribeToEmployees((data) => {
+      setEmployees(data);
+      setLoadingEmployees(false);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedEmployee) return;
+    const updated = employees.find((e) => e.id === selectedEmployee.id);
+    if (updated) {
+      setSelectedEmployee(updated);
+      setEditEmployee({
+        name: updated.name,
+        joiningDate: updated.joiningDate,
+        phone: updated.phone ?? "",
+        address: updated.address ?? "",
+      });
+    } else {
+      setSelectedEmployee(null);
+      setShowEditEmployee(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
+
+  useEffect(() => {
+    if (!selectedEmployee) return;
+    setLoadingEntries(true);
+    const unsub = api.subscribeToEmployeeLedgerEntries(selectedEmployee.id, (data) => {
+      setEntries(data);
+      setLoadingEntries(false);
+    });
+    return () => unsub();
+  }, [selectedEmployee?.id]);
+
+  async function handleAddEmployee(e: React.FormEvent) {
+    e.preventDefault();
+    setAddEmployeeError("");
+    if (!newEmployee.name.trim()) {
+      setAddEmployeeError("Employee name is required.");
+      return;
+    }
+    if (!newEmployee.joiningDate) {
+      setAddEmployeeError("Joining date is required.");
+      return;
+    }
+
+    setAddingEmployee(true);
+    try {
+      await api.addEmployee({
+        name: newEmployee.name.trim(),
+        joiningDate: newEmployee.joiningDate,
+        phone: newEmployee.phone.trim(),
+        address: newEmployee.address.trim(),
+      });
+      setNewEmployee({ name: "", joiningDate: "", phone: "", address: "" });
+      setShowAddEmployee(false);
+    } catch (err) {
+      setAddEmployeeError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setAddingEmployee(false);
+    }
+  }
+
+  function openEditEmployee() {
+    if (!selectedEmployee) return;
+    setEditEmployee({
+      name: selectedEmployee.name,
+      joiningDate: selectedEmployee.joiningDate,
+      phone: selectedEmployee.phone ?? "",
+      address: selectedEmployee.address ?? "",
+    });
+    setEditEmployeeError("");
+    setShowEditEmployee(true);
+  }
+
+  async function handleEditEmployee(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedEmployee) return;
+    setEditEmployeeError("");
+
+    if (!editEmployee.name.trim()) {
+      setEditEmployeeError("Employee name is required.");
+      return;
+    }
+    if (!editEmployee.joiningDate) {
+      setEditEmployeeError("Joining date is required.");
+      return;
+    }
+
+    setEditingEmployee(true);
+    try {
+      await api.updateEmployee(selectedEmployee.id, {
+        name: editEmployee.name.trim(),
+        joiningDate: editEmployee.joiningDate,
+        phone: editEmployee.phone.trim(),
+        address: editEmployee.address.trim(),
+      });
+      setShowEditEmployee(false);
+    } catch (err) {
+      setEditEmployeeError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setEditingEmployee(false);
+    }
+  }
+
+  async function handleDeleteEmployee() {
+    if (!selectedEmployee || deletingEmployee) return;
+    const ok = window.confirm(
+      `Remove ${selectedEmployee.name}? This will also delete all employee ledger transactions.`
+    );
+    if (!ok) return;
+
+    setDeletingEmployee(true);
+    try {
+      await api.deleteEmployee(selectedEmployee.id);
+      setSelectedEmployee(null);
+      setEntries([]);
+      setShowEditEmployee(false);
+    } finally {
+      setDeletingEmployee(false);
+    }
+  }
+
+  async function handleAddEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedEmployee) return;
+    setAddEntryError("");
+    const amount = parseFloat(entryAmount);
+    if (!entryAmount || isNaN(amount) || amount <= 0) {
+      setAddEntryError("Enter a valid positive amount.");
+      return;
+    }
+
+    setAddingEntry(true);
+    try {
+      await api.addEmployeeLedgerEntry({
+        employeeId: selectedEmployee.id,
+        type: entryType,
+        amount,
+        note: entryNote.trim() || undefined,
+      });
+      setEntryAmount("");
+      setEntryNote("");
+    } catch (err) {
+      setAddEntryError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setAddingEntry(false);
+    }
+  }
+
+  const filteredEmployees = employeeSearch
+    ? employees.filter(
+        (e) =>
+          e.name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+          (e.phone ?? "").includes(employeeSearch)
+      )
+    : employees;
+
+  const totalPayable = employees.reduce(
+    (sum, employee) => sum + (employee.balance > 0 ? employee.balance : 0),
+    0
+  );
+
+  const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
+      <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Total Employee Payable</p>
+          <p className="text-[16px] font-black text-blue-700 mt-0.5">Rs {totalPayable.toLocaleString()}</p>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[14px] font-semibold text-text-dark">
+            Employees <span className="text-text-muted font-normal">({employees.length})</span>
+          </h3>
+          <button
+            onClick={() => {
+              setShowAddEmployee((v) => !v);
+              setAddEmployeeError("");
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={showAddEmployee ? "M6 18L18 6M6 6l12 12" : "M12 4.5v15m7.5-7.5h-15"} />
+            </svg>
+            {showAddEmployee ? "Cancel" : "Add"}
+          </button>
+        </div>
+
+        {showAddEmployee && (
+          <form onSubmit={handleAddEmployee} className="bg-white border border-border-soft rounded-2xl p-4 space-y-3 shadow-sm">
+            {addEmployeeError && (
+              <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addEmployeeError}</p>
+            )}
+            <input
+              required
+              value={newEmployee.name}
+              onChange={(e) => setNewEmployee((v) => ({ ...v, name: e.target.value }))}
+              placeholder="Employee Name *"
+              className={inputCls}
+            />
+            <input
+              required
+              type="date"
+              value={newEmployee.joiningDate}
+              onChange={(e) => setNewEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
+              className={inputCls}
+            />
+            <input
+              value={newEmployee.phone}
+              onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))}
+              placeholder="Phone (optional)"
+              className={inputCls}
+            />
+            <input
+              value={newEmployee.address}
+              onChange={(e) => setNewEmployee((v) => ({ ...v, address: e.target.value }))}
+              placeholder="Address (optional)"
+              className={inputCls}
+            />
+            <button type="submit" disabled={addingEmployee} className="w-full py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
+              {addingEmployee ? "Saving…" : "Save Employee"}
+            </button>
+          </form>
+        )}
+
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input
+            type="text"
+            value={employeeSearch}
+            onChange={(e) => setEmployeeSearch(e.target.value)}
+            placeholder="Search by name or phone…"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+          />
+        </div>
+
+        <div className="space-y-1.5 max-h-[280px] lg:max-h-[620px] overflow-y-auto pr-1">
+          {loadingEmployees ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-14 bg-white rounded-xl border border-border-soft animate-pulse" />
+            ))
+          ) : filteredEmployees.length === 0 ? (
+            <p className="text-[12px] text-text-muted text-center py-8">
+              {employeeSearch ? "No employees match" : "No employees yet"}
+            </p>
+          ) : filteredEmployees.map((employee) => (
+            <button
+              key={employee.id}
+              onClick={() => setSelectedEmployee(employee)}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                selectedEmployee?.id === employee.id
+                  ? "bg-primary/5 border-primary/30 shadow-sm"
+                  : "bg-white border-border-soft hover:bg-bg"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
+                  <p className="text-[11px] text-text-muted">Joined: {fmtDate(employee.joiningDate)}</p>
+                </div>
+                <span className={`text-[12px] font-bold shrink-0 ${
+                  employee.balance > 0 ? "text-blue-700" : employee.balance < 0 ? "text-emerald-600" : "text-slate-400"
+                }`}>
+                  {employee.balance > 0
+                    ? `Rs ${employee.balance.toLocaleString()}`
+                    : employee.balance < 0
+                    ? `-Rs ${Math.abs(employee.balance).toLocaleString()}`
+                    : "Settled"}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedEmployee ? (
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h3 className="text-[17px] font-bold text-text-dark">{selectedEmployee.name}</h3>
+                <div className="flex flex-wrap gap-4 mt-2">
+                  <span className="text-[12px] text-text-muted">Joining Date: {fmtDate(selectedEmployee.joiningDate)}</span>
+                  {selectedEmployee.phone && <span className="text-[12px] text-text-muted">Phone: {selectedEmployee.phone}</span>}
+                  {selectedEmployee.address && <span className="text-[12px] text-text-muted">Address: {selectedEmployee.address}</span>}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
+                <div className={`rounded-2xl px-5 py-3 text-right border ${
+                  selectedEmployee.balance > 0
+                    ? "bg-blue-50 border-blue-100"
+                    : selectedEmployee.balance < 0
+                    ? "bg-emerald-50 border-emerald-100"
+                    : "bg-slate-50 border-slate-100"
+                }`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                    {selectedEmployee.balance > 0 ? "Payable to Employee" : selectedEmployee.balance < 0 ? "Advance with Company" : "Settled"}
+                  </p>
+                  <p className={`text-[22px] font-black mt-0.5 ${
+                    selectedEmployee.balance > 0
+                      ? "text-blue-700"
+                      : selectedEmployee.balance < 0
+                      ? "text-emerald-600"
+                      : "text-slate-400"
+                  }`}>
+                    {selectedEmployee.balance === 0 ? "✔" : `Rs ${Math.abs(selectedEmployee.balance).toLocaleString()}`}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={openEditEmployee}
+                    className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
+                  >
+                    Edit Employee
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteEmployee}
+                    disabled={deletingEmployee}
+                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
+                  >
+                    {deletingEmployee ? "Removing..." : "Remove Employee"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {showEditEmployee && (
+            <form onSubmit={handleEditEmployee} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <h4 className="text-[13px] font-semibold text-text-dark">Edit Employee Details</h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditEmployee(false);
+                    setEditEmployeeError("");
+                  }}
+                  className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {editEmployeeError && (
+                <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editEmployeeError}</p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <input
+                  required
+                  value={editEmployee.name}
+                  onChange={(e) => setEditEmployee((v) => ({ ...v, name: e.target.value }))}
+                  placeholder="Employee Name *"
+                  className={inputCls}
+                />
+                <input
+                  required
+                  type="date"
+                  value={editEmployee.joiningDate}
+                  onChange={(e) => setEditEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
+                  className={inputCls}
+                />
+                <input
+                  value={editEmployee.phone}
+                  onChange={(e) => setEditEmployee((v) => ({ ...v, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className={inputCls}
+                />
+                <input
+                  value={editEmployee.address}
+                  onChange={(e) => setEditEmployee((v) => ({ ...v, address: e.target.value }))}
+                  placeholder="Address"
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={editingEmployee}
+                  className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors"
+                >
+                  {editingEmployee ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <form onSubmit={handleAddEntry} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
+            <h4 className="text-[13px] font-semibold text-text-dark">Add Employee Transaction</h4>
+            {addEntryError && (
+              <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addEntryError}</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex rounded-xl border border-border-soft overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEntryType("credit")}
+                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                    entryType === "credit" ? "bg-blue-600 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  }`}
+                >
+                  + Credit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryType("debit")}
+                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                    entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  }`}
+                >
+                  − Debit
+                </button>
+              </div>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                value={entryAmount}
+                onChange={(e) => setEntryAmount(e.target.value)}
+                placeholder="Amount (Rs)"
+                className={inputCls}
+              />
+              <input
+                value={entryNote}
+                onChange={(e) => setEntryNote(e.target.value)}
+                placeholder="Note / Description (optional)"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button type="submit" disabled={addingEntry} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
+                {addingEntry ? "Saving…" : "Add Transaction"}
+              </button>
+            </div>
+          </form>
+
+          <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border-soft">
+              <h4 className="text-[13px] font-semibold text-text-dark">Employee Transaction History</h4>
+              <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
+            </div>
+            {loadingEntries ? (
+              <div className="p-5 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-10 bg-bg rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-[13px] text-text-muted">No transactions yet. Add one above.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-bg/60">
+                      {["Date", "Type", "Amount", "Note"].map((h) => (
+                        <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-soft">
+                    {entries.map((entry) => (
+                      <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            entry.type === "credit" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"
+                          }`}>
+                            {entry.type === "credit" ? "+ Credit" : "− Debit"}
+                          </span>
+                        </td>
+                        <td className={`px-5 py-3.5 text-[13px] font-bold ${
+                          entry.type === "credit" ? "text-blue-700" : "text-emerald-600"
+                        }`}>
+                          Rs {entry.amount.toLocaleString()}
+                        </td>
+                        <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
+                          {entry.note ?? <span className="text-text-muted italic">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center py-12 lg:py-24 text-center bg-white rounded-2xl border border-border-soft shadow-sm">
+          <svg className="w-14 h-14 text-text-muted/25 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.75V19.5a2.25 2.25 0 01-2.25 2.25h-7.5A2.25 2.25 0 016 19.5v-.75m12 0V6.75A2.25 2.25 0 0015.75 4.5h-7.5A2.25 2.25 0 006 6.75v12m12 0H6" />
+          </svg>
+          <p className="text-[15px] font-semibold text-text-dark">Select an employee</p>
+          <p className="text-[12px] text-text-muted mt-1">Click any employee on the left to view and manage their ledger</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Weekly Schedule View ───────────────────────────────────────────────────
 const DAYS_OF_WEEK: api.DayOfWeek[] = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
@@ -2105,7 +2646,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees">("requests");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -2378,6 +2919,21 @@ export default function AdminPage() {
             Customer Ledger
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab("employees")}
+          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+            activeTab === "employees"
+              ? "bg-white text-text-dark shadow-sm"
+              : "text-text-muted hover:text-text-dark"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+            Employee Ledger
+          </span>
+        </button>
         </div>
       </div>
 
@@ -2394,6 +2950,11 @@ export default function AdminPage() {
       {/* ── Customer Ledger ── */}
       {activeTab === "customers" && (
         <CustomerLedgerView />
+      )}
+
+      {/* ── Employee Ledger ── */}
+      {activeTab === "employees" && (
+        <EmployeeLedgerView />
       )}
 
       {/* ── Requests Table ── */}
