@@ -98,7 +98,7 @@ interface ModalProps {
 
 const EMPTY_FORM: MedicineRequestCreate = {
   customerName: "",
-  phone: "+92",
+  phone: "",
   medicineName: "",
   quantity: 1,
   supplierName: "",
@@ -132,6 +132,10 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!/^\d{11}$/.test(form.phone)) {
+      setError("Phone number must be exactly 11 digits.");
+      return;
+    }
     setSaving(true);
     try {
       if (mode === "create") {
@@ -198,19 +202,18 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Phone Number *</label>
               <input
-                required value={form.phone}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  // Prevent removing the +92 prefix
-                  if (!val.startsWith("+92")) {
-                    set("phone", "+92");
-                  } else {
-                    set("phone", val);
-                  }
-                }}
-                placeholder="+923001234567"
+                required
+                type="text"
+                inputMode="numeric"
+                pattern="\d{11}"
+                minLength={11}
+                maxLength={11}
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                placeholder="03001234567"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
               />
+              <p className="text-[10px] text-text-muted">Enter exactly 11 digits</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-text-dark">Quantity *</label>
@@ -860,6 +863,116 @@ function CustomerLedgerView() {
     }
   }
 
+  function handlePrint() {
+    if (!selectedCustomer || entries.length === 0) return;
+
+    // Sort oldest-first to compute running balance
+    const sorted = [...entries].sort((a, b) => {
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tA - tB;
+    });
+
+    // Find last settlement (last index where running balance reached 0)
+    let runningBalance = 0;
+    let lastSettledIndex = -1;
+    sorted.forEach((entry, i) => {
+      runningBalance += entry.type === "credit" ? entry.amount : -entry.amount;
+      if (runningBalance === 0) lastSettledIndex = i;
+    });
+
+    const printEntries = lastSettledIndex >= 0 ? sorted.slice(lastSettledIndex + 1) : sorted;
+
+    const printDate = new Date().toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" });
+    const printTime = new Date().toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
+
+    const printCredit  = printEntries.filter(e => e.type === "credit").reduce((s, e) => s + e.amount, 0);
+    const printDebit   = printEntries.filter(e => e.type === "debit").reduce((s, e) => s + e.amount, 0);
+    const printBalance = printCredit - printDebit;
+
+    const fmtD = (dateStr?: string) =>
+      dateStr ? new Date(dateStr).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+    const rows = printEntries.map((e) =>
+      `<tr>
+        <td>${fmtD(e.createdAt)}</td>
+        <td>${e.type === "credit" ? "Credit" : "Debit"}</td>
+        <td style="text-align:right;">${e.type === "credit" ? "+" : "-"}Rs ${e.amount.toLocaleString()}</td>
+        <td>${e.note ?? ""}</td>
+      </tr>`
+    ).join("");
+
+    const balanceLabel =
+      printBalance > 0 ? "AMOUNT DUE" :
+      printBalance < 0 ? "ADVANCE PAID" :
+      "ACCOUNT SETTLED";
+    const balanceDisplay =
+      printBalance === 0 ? "SETTLED \u2714" : `Rs ${Math.abs(printBalance).toLocaleString()}`;
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Receipt - ${selectedCustomer.name}</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Courier New',Courier,monospace; font-size:11px; width:72mm; margin:0 auto; padding:4mm 3mm; color:#000; }
+.center { text-align:center; }
+.divider { border-top:1px dashed #000; margin:5px 0; }
+.store-name { font-size:14px; font-weight:bold; text-align:center; line-height:1.5; }
+.sub { font-size:10px; text-align:center; }
+table { width:100%; border-collapse:collapse; margin-top:4px; }
+th { font-size:9px; text-align:left; border-bottom:1px solid #000; padding:2px 1px; }
+td { font-size:10px; padding:2px 1px; vertical-align:top; word-break:break-word; }
+.bold { font-weight:bold; }
+.totals-row td { font-weight:bold; border-top:1px solid #000; padding-top:4px; }
+.balance-box { margin-top:5px; padding:5px 4px; border:1px solid #000; text-align:center; }
+.balance-label { font-size:9px; font-weight:bold; letter-spacing:1px; }
+.balance-amount { font-size:16px; font-weight:bold; margin-top:2px; }
+@media print { body { width:72mm; } @page { size:72mm auto; margin:2mm; } }
+</style></head><body>
+<p class="store-name">Safdar &amp; Sons Pharma<br>+ Veterinary Store</p>
+<p class="sub">Contact: 03062088148</p>
+<div class="divider"></div>
+<p class="center sub">Printed: ${printDate}, ${printTime}</p>
+<div class="divider"></div>
+<p class="bold" style="margin-bottom:2px;">Customer</p>
+<p>${selectedCustomer.name}</p>
+${selectedCustomer.phone ? `<p class="sub" style="text-align:left;">Ph: ${selectedCustomer.phone}</p>` : ""}
+${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selectedCustomer.address}</p>` : ""}
+<div class="divider"></div>
+<p class="bold" style="font-size:9px;margin-bottom:2px;">TRANSACTIONS SINCE LAST SETTLEMENT</p>
+<p class="sub" style="text-align:left;margin-bottom:2px;">${printEntries.length} transaction${printEntries.length !== 1 ? "s" : ""}</p>
+<table>
+  <thead><tr>
+    <th>Date</th><th>Type</th><th style="text-align:right;">Amount</th><th>Note</th>
+  </tr></thead>
+  <tbody>${rows}
+    <tr class="totals-row">
+      <td colspan="2">Total Credit</td>
+      <td style="text-align:right;">Rs ${printCredit.toLocaleString()}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan="2" class="bold">Total Debit</td>
+      <td style="text-align:right;font-weight:bold;">Rs ${printDebit.toLocaleString()}</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+<div class="balance-box">
+  <p class="balance-label">${balanceLabel}</p>
+  <p class="balance-amount">${balanceDisplay}</p>
+</div>
+<div class="divider"></div>
+<p class="center sub" style="margin-top:4px;">Thank you for your business!</p>
+</body></html>`;
+
+    const win = window.open("", "_blank", "width=400,height=680");
+    if (!win) { alert("Please allow pop-ups to print receipts."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 600);
+  }
+
   const filteredCustomers = customerSearch
     ? customers.filter(
         (c) =>
@@ -1148,12 +1261,25 @@ function CustomerLedgerView() {
                 <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
                 <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-600 text-[11px] font-bold">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
-                </svg>
-                Total Credit: Rs {totalCreditAmount.toLocaleString()}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-600 text-[11px] font-bold">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                  </svg>
+                  Total Credit: Rs {totalCreditAmount.toLocaleString()}
+                </span>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  disabled={entries.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 text-white text-[11px] font-semibold hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                  </svg>
+                  Print Receipt
+                </button>
+              </div>
             </div>
             {loadingEntries ? (
               <div className="p-5 space-y-2">
@@ -1429,7 +1555,7 @@ function WeeklyScheduleView() {
 
       {/* Loading skeleton */}
       {loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="bg-white rounded-2xl border border-border-soft p-4 space-y-3 animate-pulse">
               <div className="h-5 w-28 bg-bg rounded-full" />
@@ -1442,7 +1568,7 @@ function WeeklyScheduleView() {
 
       {/* 7-day grid — no delete buttons here, just names */}
       {!loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {DAYS_OF_WEEK.map((day) => {
             const c = DAY_COLORS[day];
             const isToday = day === today;
@@ -1491,8 +1617,8 @@ function WeeklyScheduleView() {
                           // Lock toggle once booked and it's past 12 PM
                           const locked = booked && isPastNoon;
                           return (
-                            <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
-                              <span className="text-[12px] font-semibold text-text-dark truncate flex-1">{s.supplierName}</span>
+                            <div key={s.id} className="flex items-start gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                              <span className="text-[12px] font-semibold text-text-dark break-words leading-5 flex-1">{s.supplierName}</span>
 
                               {isToday ? (
                                 // ── Today's card: interactive toggle ──
@@ -1506,7 +1632,7 @@ function WeeklyScheduleView() {
                                       ? "Unmark booking"
                                       : "Mark as booked"
                                   }
-                                  className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                                  className={`shrink-0 self-start mt-0.5 min-w-[84px] justify-center flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
                                     locked
                                       ? "cursor-not-allowed opacity-70"
                                       : "disabled:opacity-50"
@@ -1535,7 +1661,7 @@ function WeeklyScheduleView() {
                                 </button>
                               ) : booked ? (
                                 // ── Other days: static Booked badge only ──
-                                <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                                <span className="shrink-0 self-start mt-0.5 min-w-[84px] justify-center flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
                                   <span>Booked</span>
                                 </span>
@@ -1557,9 +1683,9 @@ function WeeklyScheduleView() {
                     ) : (
                       <div className="space-y-1.5">
                         {supply.map((s) => (
-                          <div key={s.id} className="flex items-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
-                            <svg className="w-3 h-3 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                            <span className="text-[12px] font-semibold text-text-dark truncate">{s.supplierName}</span>
+                          <div key={s.id} className="flex items-start gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
+                            <svg className="w-3 h-3 text-emerald-500 shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                            <span className="text-[12px] font-semibold text-text-dark break-words leading-5">{s.supplierName}</span>
                           </div>
                         ))}
                       </div>
