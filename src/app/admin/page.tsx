@@ -1388,7 +1388,14 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                         <td className={`px-5 py-3.5 text-[13px] font-bold ${
                           entry.type === "credit" ? "text-rose-600" : "text-emerald-600"
                         }`}>
-                          Rs {entry.amount.toLocaleString()}
+                          <div>
+                            <p>Rs {entry.amount.toLocaleString()}</p>
+                            {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
+                              <p className="text-[10px] font-medium text-amber-700 mt-0.5">
+                                Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
+                              </p>
+                            )}
+                          </div>
                         </td>
                         <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
                           {entry.note ?? <span className="text-text-muted italic">—</span>}

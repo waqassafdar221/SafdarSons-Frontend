@@ -469,6 +469,9 @@ export interface LedgerEntry {
   amount: number;
   note?: string;
   createdAt?: string;
+  lastEditedAmount?: number;
+  lastEditedAt?: string;
+  lastEditedBy?: string;
 }
 
 export interface LedgerEntryCreate {
@@ -500,6 +503,9 @@ function docToLedgerEntry(id: string, data: Record<string, unknown>): LedgerEntr
     amount:     (data.amount     as number)          ?? 0,
     note:       (data.note       as string)          ?? undefined,
     createdAt:  tsToString(data.createdAt),
+    lastEditedAmount: (data.lastEditedAmount as number) ?? undefined,
+    lastEditedAt: tsToString(data.lastEditedAt),
+    lastEditedBy: (data.lastEditedBy as string) ?? undefined,
   };
 }
 
@@ -599,6 +605,9 @@ export async function updateLedgerEntry(
       type:   data.type,
       amount: data.amount,
       note:   data.note || null,
+      lastEditedAmount: existing.amount,
+      lastEditedAt: serverTimestamp(),
+      lastEditedBy: auth.currentUser?.email ?? null,
     };
     tx.update(ledgerRef, payload);
   });
