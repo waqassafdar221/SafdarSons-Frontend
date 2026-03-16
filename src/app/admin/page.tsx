@@ -812,13 +812,17 @@ function CustomerLedgerView() {
       setAddEntryError("Enter a valid positive amount.");
       return;
     }
+    if (!entryNote.trim()) {
+      setAddEntryError("Note is required.");
+      return;
+    }
     setAddingEntry(true);
     try {
       await api.addLedgerEntry({
         customerId: selectedCustomer.id,
         type: entryType,
         amount,
-        note: entryNote.trim() || undefined,
+        note: entryNote.trim(),
       });
       setEntryAmount("");
       setEntryNote("");
@@ -1308,9 +1312,10 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 className={inputCls}
               />
               <input
+                required
                 value={entryNote}
                 onChange={(e) => setEntryNote(e.target.value)}
-                placeholder="Note / Description (optional)"
+                placeholder="Note / Description *"
                 className={inputCls}
               />
             </div>
