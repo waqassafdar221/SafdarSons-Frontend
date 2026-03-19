@@ -1045,13 +1045,18 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
     setTimeout(() => { win.print(); win.close(); }, 600);
   }
 
-  const filteredCustomers = customerSearch
+  const filteredCustomers = (customerSearch
     ? customers.filter(
         (c) =>
           c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
           (c.phone ?? "").includes(customerSearch)
       )
-    : customers;
+    : customers).sort((a, b) => {
+      // Customers with balance > 0 or < 0 first, settled (balance === 0) at the end
+      if (a.balance === 0 && b.balance !== 0) return 1;
+      if (a.balance !== 0 && b.balance === 0) return -1;
+      return 0;
+    });
 
   const totalCustomerCredit = customers.reduce(
     (sum, customer) => sum + (customer.balance > 0 ? customer.balance : 0),
@@ -1747,13 +1752,18 @@ function EmployeeLedgerView() {
     }
   }
 
-  const filteredEmployees = employeeSearch
+  const filteredEmployees = (employeeSearch
     ? employees.filter(
         (e) =>
           e.name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
           (e.phone ?? "").includes(employeeSearch)
       )
-    : employees;
+    : employees).sort((a, b) => {
+      // Employees with balance > 0 or < 0 first, settled (balance === 0) at the end
+      if (a.balance === 0 && b.balance !== 0) return 1;
+      if (a.balance !== 0 && b.balance === 0) return -1;
+      return 0;
+    });
 
   const totalPayable = employees.reduce(
     (sum, employee) => sum + (employee.balance > 0 ? employee.balance : 0),
