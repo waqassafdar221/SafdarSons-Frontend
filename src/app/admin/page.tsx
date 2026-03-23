@@ -1115,7 +1115,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
           <div className="overflow-hidden py-2">
             <div
               className="flex w-max items-center whitespace-nowrap text-[12px] font-semibold"
-              style={{ animation: "customer-ledger-ticker-loop 20s linear infinite" }}
+              style={{ animation: "customer-ledger-ticker-loop 60s linear infinite" }}
             >
               {[0, 1].map((loop) => (
                 <span key={loop} className="inline-flex items-center px-4" aria-hidden={loop === 1}>
