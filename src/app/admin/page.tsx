@@ -2999,62 +2999,34 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* ── Stats Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
-        {STAT_CARDS.map((card) => {
-          const value = stats ? (stats as unknown as Record<string, number>)[card.key] : null;
-          return (
-            <button
-              key={card.key}
-              onClick={() => setStatusFilter(card.key === "total" ? "all" : (card.key as RequestStatus))}
-              className={`relative overflow-hidden bg-gradient-to-br ${card.color} rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 group`}
-            >
-              <div className="absolute right-3 top-3 opacity-20 group-hover:opacity-30 transition-opacity">
-                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d={card.icon} />
-                </svg>
-              </div>
-              <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wider">{card.label}</p>
-              <p className="text-3xl font-bold text-white mt-1">
-                {statsLoading ? (
-                  <span className="inline-block w-8 h-7 bg-white/20 rounded animate-pulse" />
-                ) : (
-                  value ?? 0
-                )}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-
       {/* ── Tab Switcher ── */}
-      <div className="w-full overflow-x-auto pb-1">
-        <div className="flex items-center gap-1 bg-bg rounded-xl p-1 w-max min-w-full sm:min-w-0 sm:w-fit">
-        <button
-          onClick={() => setActiveTab("requests")}
-          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
-            activeTab === "requests"
-              ? "bg-white text-text-dark shadow-sm"
-              : "text-text-muted hover:text-text-dark"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-            All Requests
-          </span>
-        </button>
+      <div className="w-full overflow-x-auto pb-2">
+        <div className="flex items-center gap-2 border-b border-border-soft w-max min-w-full">
+          <button
+            onClick={() => setActiveTab("requests")}
+            className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
+              activeTab === "requests"
+                ? "border-primary text-primary"
+                : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+              </svg>
+              All Requests
+            </span>
+          </button>
         <button
           onClick={() => setActiveTab("orderSummary")}
-          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "orderSummary"
-              ? "bg-white text-text-dark shadow-sm"
-              : "text-text-muted hover:text-text-dark"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
             Order Summary
@@ -3062,14 +3034,14 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab("weeklySchedule")}
-          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "weeklySchedule"
-              ? "bg-white text-text-dark shadow-sm"
-              : "text-text-muted hover:text-text-dark"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
             </svg>
             Weekly Schedule
@@ -3077,14 +3049,14 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab("customers")}
-          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "customers"
-              ? "bg-white text-text-dark shadow-sm"
-              : "text-text-muted hover:text-text-dark"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
             </svg>
             Customer Ledger
@@ -3092,14 +3064,14 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab("employees")}
-          className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "employees"
-              ? "bg-white text-text-dark shadow-sm"
-              : "text-text-muted hover:text-text-dark"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
             Employee Ledger
