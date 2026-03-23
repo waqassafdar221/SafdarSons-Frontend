@@ -804,12 +804,31 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
     return () => unsub();
   }, [selectedCustomer?.id]);
 
-  // Subscribe to all customer ledger entries for global daily reminder ticker
+  // Poll all customer ledger entries for global daily reminder ticker (every 30 minutes)
   useEffect(() => {
-    const unsub = api.subscribeToAllLedgerEntries((data) => {
-      setAllLedgerEntries(data);
-    });
-    return () => unsub();
+    let cancelled = false;
+
+    async function loadOnce() {
+      try {
+        const entries = await api.getAllLedgerEntriesOnce();
+        if (!cancelled) {
+          setAllLedgerEntries(entries);
+        }
+      } catch (e) {
+        console.error("Failed to load ledger entries for ticker", e);
+      }
+    }
+
+    // initial load
+    loadOnce();
+
+    // poll every 30 minutes
+    const intervalId = setInterval(loadOnce, 30 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   async function handleAddCustomer(e: React.FormEvent) {
@@ -1135,7 +1154,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                           const targetCustomer = customers.find((c) => c.id === item.customerId);
                           if (targetCustomer) setSelectedCustomer(targetCustomer);
                         }}
-                        className={`underline underline-offset-4 decoration-dotted hover:decoration-solid transition-all cursor-pointer ${item.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
+                        className={`transition-all cursor-pointer ${item.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
                         title={`Open ${item.customerName} ledger`}
                       >
                         {item.customerName} {item.type === "credit" ? "Credit" : "Debit"}: {item.type === "credit" ? "+" : "−"}Rs {item.amount.toLocaleString()}
@@ -2825,7 +2844,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees">("requests");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees">("customers");
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);

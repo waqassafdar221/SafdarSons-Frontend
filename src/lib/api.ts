@@ -640,6 +640,7 @@ export function subscribeToLedgerEntries(
 export function subscribeToAllLedgerEntries(
   onChange: (entries: LedgerEntry[]) => void
 ): () => void {
+  // Kept for backward compatibility where realtime is still desired.
   return onSnapshot(collection(db, LEDGER_COLLECTION), (snap) => {
     const entries = snap.docs
       .map((d) => docToLedgerEntry(d.id, d.data() as Record<string, unknown>))
@@ -650,6 +651,21 @@ export function subscribeToAllLedgerEntries(
       });
     onChange(entries);
   });
+}
+
+/**
+ * Fetches all customer ledger entries once (no realtime listener).
+ * Useful when you want to poll periodically instead of staying subscribed.
+ */
+export async function getAllLedgerEntriesOnce(): Promise<LedgerEntry[]> {
+  const snap = await getDocs(collection(db, LEDGER_COLLECTION));
+  return snap.docs
+    .map((d) => docToLedgerEntry(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bt - at;
+    });
 }
 
 // ─── Employee Ledger ─────────────────────────────────────────────────────────
