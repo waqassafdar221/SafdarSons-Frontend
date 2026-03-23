@@ -78,6 +78,15 @@ function fmtDate(dateStr?: string) {
   });
 }
 
+function isSameLocalDay(dateStr: string, refDate = new Date()) {
+  const d = new Date(dateStr);
+  return (
+    d.getDate() === refDate.getDate() &&
+    d.getMonth() === refDate.getMonth() &&
+    d.getFullYear() === refDate.getFullYear()
+  );
+}
+
 // ─── Stats Cards ─────────────────────────────────────────────────────────────
 const STAT_CARDS = [
   { key: "total",     label: "Total",     color: "from-slate-700 to-slate-900",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
@@ -724,6 +733,7 @@ function CustomerLedgerView() {
   // Ledger entries
   const [entries, setEntries] = useState<api.LedgerEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
+  const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
 
   // Add transaction form
   const [entryType, setEntryType] = useState<api.LedgerEntryType>("credit");
@@ -787,15 +797,24 @@ function CustomerLedgerView() {
     return () => unsub();
   }, [selectedCustomer?.id]);
 
+  // Subscribe to all customer ledger entries for global daily reminder ticker
+  useEffect(() => {
+    const unsub = api.subscribeToAllLedgerEntries((data) => {
+      setAllLedgerEntries(data);
+    });
+    return () => unsub();
+  }, []);
+
   async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
     setAddCustomerError("");
     if (!newCustomer.name.trim()) { setAddCustomerError("Name is required."); return; }
     setAddingCustomer(true);
     try {
-      await api.addCustomer(newCustomer);
+      const createdCustomer = await api.addCustomer(newCustomer);
       setNewCustomer({ name: "", phone: "", address: "" });
       setShowAddCustomer(false);
+      setSelectedCustomer(createdCustomer);
     } catch (err) {
       setAddCustomerError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -1067,10 +1086,67 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
     .filter((entry) => entry.type === "credit")
     .reduce((sum, entry) => sum + entry.amount, 0);
 
+  const todayLedgerTickerItems = allLedgerEntries
+    .filter((entry) => entry.createdAt && isSameLocalDay(entry.createdAt))
+    .sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return at - bt;
+    })
+    .map((entry) => {
+      const customerName = customers.find((c) => c.id === entry.customerId)?.name ?? "Unknown Customer";
+      return {
+        customerId: entry.customerId,
+        customerName,
+        type: entry.type,
+        amount: entry.amount,
+      };
+    });
+
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
+    <div className="space-y-4">
+      {todayLedgerTickerItems.length > 0 && (
+        <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-50 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-50 to-transparent" />
+
+          <div className="overflow-hidden py-2">
+            <div
+              className="flex w-max items-center whitespace-nowrap text-[12px] font-semibold"
+              style={{ animation: "customer-ledger-ticker-loop 20s linear infinite" }}
+            >
+              {[0, 1].map((loop) => (
+                <span key={loop} className="inline-flex items-center px-4" aria-hidden={loop === 1}>
+                  {todayLedgerTickerItems.map((item, idx) => (
+                    <span key={`${loop}-${item.customerId}-${item.type}-${item.amount}-${idx}`} className="inline-flex items-center">
+                      <button
+                        type="button"
+                        tabIndex={loop === 1 ? -1 : 0}
+                        onClick={() => {
+                          const targetCustomer = customers.find((c) => c.id === item.customerId);
+                          if (targetCustomer) setSelectedCustomer(targetCustomer);
+                        }}
+                        className={`underline underline-offset-4 decoration-dotted hover:decoration-solid transition-all cursor-pointer ${item.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
+                        title={`Open ${item.customerName} ledger`}
+                      >
+                        {item.customerName} {item.type === "credit" ? "Credit" : "Debit"}: {item.type === "credit" ? "+" : "−"}Rs {item.amount.toLocaleString()}
+                      </button>
+                      {idx < todayLedgerTickerItems.length - 1 && (
+                        <span className="mx-3 text-slate-300">•</span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
+
       {/* ── Left: Customer List ── */}
       <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
         <div className="bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">
@@ -1552,6 +1628,14 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
           <p className="text-[12px] text-text-muted mt-1">Click any customer on the left to view and manage their ledger</p>
         </div>
       )}
+      </div>
+
+      <style jsx>{`
+        @keyframes customer-ledger-ticker-loop {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
     </div>
   );
 }

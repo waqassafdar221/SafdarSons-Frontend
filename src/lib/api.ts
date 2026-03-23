@@ -633,6 +633,25 @@ export function subscribeToLedgerEntries(
   });
 }
 
+/**
+ * Subscribes to all customer ledger entries (all customers).
+ * Useful for global summaries/tickers.
+ */
+export function subscribeToAllLedgerEntries(
+  onChange: (entries: LedgerEntry[]) => void
+): () => void {
+  return onSnapshot(collection(db, LEDGER_COLLECTION), (snap) => {
+    const entries = snap.docs
+      .map((d) => docToLedgerEntry(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(entries);
+  });
+}
+
 // ─── Employee Ledger ─────────────────────────────────────────────────────────
 export interface Employee {
   id: string;
