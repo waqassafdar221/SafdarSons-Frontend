@@ -711,14 +711,16 @@ function OrderSummaryView({
 }
 
 // ─── Customer Ledger View ────────────────────────────────────────────────────
-function CustomerLedgerView() {
+function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCustomer: boolean; setShowAddCustomer: (v: boolean) => void }) {
   const [customers, setCustomers] = useState<api.Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<api.Customer | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
 
+  // Search input ref for auto-focus
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // Add customer form
-  const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" });
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [addCustomerError, setAddCustomerError] = useState("");
@@ -758,6 +760,11 @@ function CustomerLedgerView() {
   const [editEntryError, setEditEntryError] = useState("");
   const [editingEntry, setEditingEntry] = useState(false);
   const [showEditEntryPassword, setShowEditEntryPassword] = useState(false);
+
+  // Focus search input on component mount
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
 
   // Subscribe to customers
   useEffect(() => {
@@ -1159,7 +1166,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             Customers <span className="text-text-muted font-normal">({customers.length})</span>
           </h3>
           <button
-            onClick={() => { setShowAddCustomer((v) => !v); setAddCustomerError(""); }}
+            onClick={() => { setShowAddCustomer(!showAddCustomer); setAddCustomerError(""); }}
             className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -1191,6 +1198,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <input
+            ref={searchInputRef}
             type="text"
             value={customerSearch}
             onChange={(e) => setCustomerSearch(e.target.value)}
@@ -2821,6 +2829,7 @@ export default function AdminPage() {
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [editRequest, setEditRequest] = useState<MedicineRequest | null>(null);
   const [detailRequest, setDetailRequest] = useState<MedicineRequest | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<MedicineRequest | null>(null);
@@ -2989,13 +2998,13 @@ export default function AdminPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={() => activeTab === "customers" ? setShowAddCustomer(true) : setShowCreate(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white text-[13px] font-semibold rounded-xl hover:bg-primary-dark shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/25 transition-all duration-200"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          New Request
+          {activeTab === "customers" ? "Add Customer" : "New Request"}
         </button>
       </div>
 
@@ -3003,33 +3012,33 @@ export default function AdminPage() {
       <div className="w-full overflow-x-auto pb-2">
         <div className="flex items-center gap-2 border-b border-border-soft w-max min-w-full">
           <button
-            onClick={() => setActiveTab("requests")}
+            onClick={() => setActiveTab("customers")}
             className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
-              activeTab === "requests"
+              activeTab === "customers"
                 ? "border-primary text-primary"
                 : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
             }`}
           >
             <span className="flex items-center gap-2">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
               </svg>
-              All Requests
+              Customer Ledger
             </span>
           </button>
         <button
-          onClick={() => setActiveTab("orderSummary")}
+          onClick={() => setActiveTab("employees")}
           className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
-            activeTab === "orderSummary"
+            activeTab === "employees"
               ? "border-primary text-primary"
               : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
-            Order Summary
+            Employee Ledger
           </span>
         </button>
         <button
@@ -3048,33 +3057,33 @@ export default function AdminPage() {
           </span>
         </button>
         <button
-          onClick={() => setActiveTab("customers")}
+          onClick={() => setActiveTab("requests")}
           className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
-            activeTab === "customers"
+            activeTab === "requests"
               ? "border-primary text-primary"
               : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
             </svg>
-            Customer Ledger
+            All Requests
           </span>
         </button>
         <button
-          onClick={() => setActiveTab("employees")}
+          onClick={() => setActiveTab("orderSummary")}
           className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
-            activeTab === "employees"
+            activeTab === "orderSummary"
               ? "border-primary text-primary"
               : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
           }`}
         >
           <span className="flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
-            Employee Ledger
+            Order Summary
           </span>
         </button>
         </div>
@@ -3092,7 +3101,7 @@ export default function AdminPage() {
 
       {/* ── Customer Ledger ── */}
       {activeTab === "customers" && (
-        <CustomerLedgerView />
+        <CustomerLedgerView showAddCustomer={showAddCustomer} setShowAddCustomer={setShowAddCustomer} />
       )}
 
       {/* ── Employee Ledger ── */}
