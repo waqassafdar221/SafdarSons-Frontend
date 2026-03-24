@@ -2314,6 +2314,21 @@ function isBookedThisWeek(lastBookedAt?: string): boolean {
   return booked >= sunday && booked <= saturday;
 }
 
+/** Returns true if lastReceivedAt falls within the current Sun–Sat calendar week. */
+function isReceivedThisWeek(lastReceivedAt?: string): boolean {
+  if (!lastReceivedAt) return false;
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - dayOfWeek);
+  sunday.setHours(0, 0, 0, 0);
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  saturday.setHours(23, 59, 59, 999);
+  const received = new Date(lastReceivedAt);
+  return received >= sunday && received <= saturday;
+}
+
 function WeeklyScheduleView() {
   const [schedules, setSchedules] = useState<api.SupplierSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2338,6 +2353,13 @@ function WeeklyScheduleView() {
 
   // Booking toggle state
   const [togglingBooking, setTogglingBooking] = useState<Set<string>>(new Set());
+  const [togglingReceived, setTogglingReceived] = useState<Set<string>>(new Set());
+
+  // Inline supply-price editor state
+  const [priceTarget, setPriceTarget] = useState<api.SupplierSchedule | null>(null);
+  const [priceValue, setPriceValue] = useState("");
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [priceError, setPriceError] = useState("");
 
   useEffect(() => {
     const unsub = api.subscribeToSupplierSchedules((data) => {
@@ -2405,6 +2427,49 @@ function WeeklyScheduleView() {
     }
   }
 
+  async function toggleSupplyReceived(s: api.SupplierSchedule) {
+    const received = isReceivedThisWeek(s.lastReceivedAt);
+    setTogglingReceived((prev) => new Set([...prev, s.id]));
+    try {
+      await api.setSupplyReceivedStatus(s.id, !received);
+    } finally {
+      setTogglingReceived((prev) => {
+        const next = new Set(prev);
+        next.delete(s.id);
+        return next;
+      });
+    }
+  }
+
+  function openPriceEditor(s: api.SupplierSchedule) {
+    setPriceTarget(s);
+    setPriceValue(typeof s.expectedSupplyPrice === "number" && s.expectedSupplyPrice > 0 ? String(s.expectedSupplyPrice) : "");
+    setPriceError("");
+  }
+
+  async function handleSavePrice(e: React.FormEvent) {
+    e.preventDefault();
+    if (!priceTarget) return;
+
+    const amount = Number(priceValue);
+    if (!priceValue.trim() || Number.isNaN(amount) || amount < 0) {
+      setPriceError("Please enter a valid supply price.");
+      return;
+    }
+
+    setPriceSaving(true);
+    setPriceError("");
+    try {
+      await api.updateSupplierSchedule(priceTarget.id, { expectedSupplyPrice: amount });
+      setPriceTarget(null);
+      setPriceValue("");
+    } catch (err) {
+      setPriceError(err instanceof Error ? err.message : "Failed to save supply price");
+    } finally {
+      setPriceSaving(false);
+    }
+  }
+
   async function handleDelete(e: React.FormEvent) {
     e.preventDefault();
     if (!deleteTarget) return;
@@ -2426,7 +2491,7 @@ function WeeklyScheduleView() {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" }) as api.DayOfWeek;
   const isPastNoon = new Date().getHours() >= 12;
-  const [expandedDay, setExpandedDay] = useState<api.DayOfWeek | null>(today);
+  const [activeDay, setActiveDay] = useState<api.DayOfWeek>(today);
 
   const filteredSchedules = supplierSearch
     ? schedules.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
@@ -2503,144 +2568,257 @@ function WeeklyScheduleView() {
         </div>
       )}
 
-      {/* 7-day grid — no delete buttons here, just names */}
+      {/* Single selected-day tabular view */}
       {!loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {DAYS_OF_WEEK.map((day) => {
-            const c = DAY_COLORS[day];
-            const isToday = day === today;
-            const isExpanded = day === expandedDay;
-            const booking = schedules.filter((s) => s.bookingDay === day);
-            const supply  = schedules.filter((s) => s.supplyDay  === day);
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] font-medium text-text-muted">View schedule for</span>
+            <select
+              value={activeDay}
+              onChange={(e) => setActiveDay(e.target.value as api.DayOfWeek)}
+              className="px-3.5 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+            >
+              {DAYS_OF_WEEK.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            {activeDay === today && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>
+            )}
+          </div>
+
+          {(() => {
+            const booking = schedules
+              .filter((s) => s.bookingDay === activeDay)
+              .sort((a, b) => {
+                const aBooked = isBookedThisWeek(a.lastBookedAt);
+                const bBooked = isBookedThisWeek(b.lastBookedAt);
+                if (aBooked !== bBooked) return aBooked ? 1 : -1; // pending first
+                return a.supplierName.localeCompare(b.supplierName);
+              });
+
+            const supply = schedules
+              .filter((s) => s.supplyDay === activeDay)
+              .sort((a, b) => {
+                const aReceived = isReceivedThisWeek(a.lastReceivedAt);
+                const bReceived = isReceivedThisWeek(b.lastReceivedAt);
+                if (aReceived !== bReceived) return aReceived ? 1 : -1; // pending first
+                return a.supplierName.localeCompare(b.supplierName);
+              });
+
+            const totalSupplyCost = supply.reduce((sum, s) => sum + (s.expectedSupplyPrice ?? 0), 0);
+            const remainingSupplyCost = supply
+              .filter((s) => !isReceivedThisWeek(s.lastReceivedAt))
+              .reduce((sum, s) => sum + (s.expectedSupplyPrice ?? 0), 0);
+            const rows = Math.max(booking.length, supply.length);
 
             return (
-              <div key={day} className={`rounded-2xl border ${c.border} ${c.bg} overflow-hidden transition-all ${isExpanded ? "shadow-md" : "shadow-sm"} ${isToday ? "ring-2 ring-offset-1 ring-primary/40" : ""}`}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedDay((prev) => {
-                      if (prev === day) return day === today ? day : null;
-                      return day;
-                    })
-                  }
-                  className={`w-full px-4 py-3 flex items-center justify-between ${isExpanded ? `border-b ${c.border}` : ""} hover:bg-white/30 transition-colors`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                    <h3 className={`text-[14px] font-bold ${c.text}`}>{day}</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isToday && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-primary text-white rounded-full">Today</span>}
-                    <svg className={`w-4 h-4 ${c.text} transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </div>
-                </button>
-
-                {isExpanded ? (
-                <div className="p-4 space-y-4">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                      Booking Day
+              <div className="bg-white border border-border-soft rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-4 py-2.5 border-b border-border-soft flex items-center justify-between gap-3">
+                  <h3 className="text-[13px] font-semibold text-text-dark">{activeDay} Schedule</h3>
+                  <div className="text-right">
+                    <p className="text-[12px] font-medium text-text-dark">
+                      Total Supply Cost: {totalSupplyCost.toLocaleString()}
                     </p>
-                    {booking.length === 0 ? (
-                      <p className="text-[11px] text-text-muted/50 italic">No bookings</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {booking.map((s) => {
-                          const booked = isBookedThisWeek(s.lastBookedAt);
-                          const isToggling = togglingBooking.has(s.id);
-                          // Lock toggle once booked and it's past 12 PM
-                          const locked = booked && isPastNoon;
-                          return (
-                            <div key={s.id} className="flex items-start gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
-                              <span className="text-[12px] font-semibold text-text-dark break-words leading-5 flex-1">{s.supplierName}</span>
-
-                              {isToday ? (
-                                // ── Today's card: interactive toggle ──
-                                <button
-                                  onClick={() => !locked && toggleBooking(s)}
-                                  disabled={isToggling || locked}
-                                  title={
-                                    locked
-                                      ? "Booking locked after 12 PM"
-                                      : booked
-                                      ? "Unmark booking"
-                                      : "Mark as booked"
-                                  }
-                                  className={`shrink-0 self-start mt-0.5 min-w-[84px] justify-center flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                                    locked
-                                      ? "cursor-not-allowed opacity-70"
-                                      : "disabled:opacity-50"
-                                  } ${
-                                    booked
-                                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                                  }`}
-                                >
-                                  {isToggling ? (
-                                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
-                                  ) : booked ? (
-                                    <>
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                      <span>Booked</span>
-                                      {locked && (
-                                        <svg className="w-3 h-3 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                      <span>Pending</span>
-                                    </>
-                                  )}
-                                </button>
-                              ) : booked ? (
-                                // ── Other days: static Booked badge only ──
-                                <span className="shrink-0 self-start mt-0.5 min-w-[84px] justify-center flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                  <span>Booked</span>
-                                </span>
-                              ) : null /* no badge on other days if not yet booked */}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className={`h-px ${c.border} border-t`} />
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-                      Supply Day
+                    <p className="text-[12px] font-semibold text-amber-700">
+                      Remaining Supply Cost: {remainingSupplyCost.toLocaleString()}
                     </p>
-                    {supply.length === 0 ? (
-                      <p className="text-[11px] text-text-muted/50 italic">No supplies</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {supply.map((s) => (
-                          <div key={s.id} className="flex items-start gap-2 bg-white/70 rounded-lg px-2.5 py-1.5">
-                            <svg className="w-3 h-3 text-emerald-500 shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                            <span className="text-[12px] font-semibold text-text-dark break-words leading-5">{s.supplierName}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
-                ) : (
-                  <div className="px-4 pb-3">
-                    <div className="bg-white/60 rounded-xl px-3 py-2">
-                      <p className="text-[11px] text-text-muted">
-                        <span className="font-semibold text-text-dark">{booking.length}</span> booking · <span className="font-semibold text-text-dark">{supply.length}</span> supply
-                      </p>
-                    </div>
-                  </div>
-                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead>
+                      <tr className="bg-bg/60">
+                        <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider w-1/2">Booking</th>
+                        <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider w-1/2">Supplier</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-soft">
+                      {rows === 0 ? (
+                        <tr>
+                          <td colSpan={2} className="px-4 py-8 text-center text-[12px] text-text-muted">No booking or supplier scheduled for this day</td>
+                        </tr>
+                      ) : (
+                        Array.from({ length: rows }).map((_, idx) => {
+                          const b = booking[idx];
+                          const s = supply[idx];
+
+                          return (
+                            <tr key={`${activeDay}-${idx}`} className={`align-top ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"} hover:bg-blue-50/30 transition-colors`}>
+                              <td className="px-4 py-2">
+                                {b ? (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[13px] font-semibold text-text-dark leading-5">{b.supplierName}</p>
+                                    {(() => {
+                                      const booked = isBookedThisWeek(b.lastBookedAt);
+                                      const isToggling = togglingBooking.has(b.id);
+                                      const locked = booked && isPastNoon;
+
+                                      return (
+                                        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                          {activeDay === today ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => !locked && toggleBooking(b)}
+                                              disabled={isToggling || locked}
+                                              title={
+                                                locked
+                                                  ? "Booking locked after 12 PM"
+                                                  : booked
+                                                  ? "Unmark booking"
+                                                  : "Mark as booked"
+                                              }
+                                              className={`min-w-[78px] justify-center flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                                                locked
+                                                  ? "cursor-not-allowed opacity-70"
+                                                  : "disabled:opacity-50"
+                                              } ${
+                                                booked
+                                                  ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                              }`}
+                                            >
+                                              {isToggling ? (
+                                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                                              ) : booked ? (
+                                                <>
+                                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                                  <span>Booked</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                  <span>Pending</span>
+                                                </>
+                                              )}
+                                            </button>
+                                          ) : (
+                                            <span className={`min-w-[78px] justify-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${booked ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                              {booked ? "Booked" : "Pending"}
+                                            </span>
+                                          )}
+
+                                          <button
+                                            type="button"
+                                            onClick={() => openPriceEditor(b)}
+                                            className="px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary text-[10px] font-semibold hover:bg-primary/15 transition-colors"
+                                            title="Add or update expected supply price"
+                                          >
+                                            {typeof b.expectedSupplyPrice === "number" && b.expectedSupplyPrice > 0
+                                              ? `Price: ${b.expectedSupplyPrice.toLocaleString()}`
+                                              : "Add Price"}
+                                          </button>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <span className="text-[12px] text-text-muted">—</span>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-2">
+                                {s ? (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <p className="text-[13px] font-semibold text-text-dark leading-5 truncate">{s.supplierName}</p>
+                                      <p className="text-[11px] text-text-muted whitespace-nowrap">
+                                        Expected: {typeof s.expectedSupplyPrice === "number" && s.expectedSupplyPrice > 0 ? s.expectedSupplyPrice.toLocaleString() : "—"}
+                                      </p>
+                                    </div>
+
+                                    {(() => {
+                                      const received = isReceivedThisWeek(s.lastReceivedAt);
+                                      const isToggling = togglingReceived.has(s.id);
+
+                                      return activeDay === today ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleSupplyReceived(s)}
+                                          disabled={isToggling}
+                                          className={`min-w-[86px] justify-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all disabled:opacity-50 ${
+                                            received
+                                              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                              : "bg-red-100 text-red-600 hover:bg-red-200"
+                                          }`}
+                                          title={received ? "Mark as pending" : "Mark as received"}
+                                        >
+                                          {isToggling ? (
+                                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                                          ) : received ? (
+                                            <>
+                                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                              <span>Received</span>
+                                            </>
+                                          ) : (
+                                            <span>Pending</span>
+                                          )}
+                                        </button>
+                                      ) : (
+                                        <span className={`min-w-[86px] justify-center inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${received ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                                          {received ? "Received" : "Pending"}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <span className="text-[12px] text-text-muted">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             );
-          })}
+          })()}
+        </div>
+      )}
+
+      {/* ── Supply Price Modal ── */}
+      {priceTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPriceTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+            <div>
+              <h2 className="text-[15px] font-semibold text-text-dark">Expected Supply Price</h2>
+              <p className="text-[12px] text-text-muted mt-0.5">Set price for <span className="font-semibold">{priceTarget.supplierName}</span></p>
+            </div>
+
+            {priceError && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
+                <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                <p className="text-[12px] text-red-600">{priceError}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleSavePrice} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-text-dark">Supply Price *</label>
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={priceValue}
+                  onChange={(e) => setPriceValue(e.target.value)}
+                  placeholder="e.g. 50000"
+                  className={inputCls}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setPriceTarget(null)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={priceSaving} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+                  {priceSaving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {priceSaving ? "Saving…" : "Save Price"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

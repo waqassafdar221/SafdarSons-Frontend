@@ -359,26 +359,39 @@ export interface SupplierSchedule {
   supplierName: string;
   bookingDay: DayOfWeek;
   supplyDay: DayOfWeek;
+  expectedSupplyPrice?: number;
   createdAt?: string;
   lastBookedAt?: string; // ISO date string (YYYY-MM-DD) of last booking confirmation
+  lastReceivedAt?: string; // ISO date string (YYYY-MM-DD) of last supply received confirmation
 }
 
 export interface SupplierScheduleCreate {
   supplierName: string;
   bookingDay: DayOfWeek;
   supplyDay: DayOfWeek;
+  expectedSupplyPrice?: number;
 }
 
 const SCHEDULE_COLLECTION = "supplierSchedules";
 
 function docToSchedule(id: string, data: Record<string, unknown>): SupplierSchedule {
+  const rawExpected = (data as { expectedSupplyPrice?: unknown }).expectedSupplyPrice;
+  const expectedSupplyPrice =
+    typeof rawExpected === "number"
+      ? rawExpected
+      : rawExpected != null
+      ? Number(rawExpected)
+      : undefined;
+
   return {
     id,
     supplierName:  (data.supplierName as string) ?? "",
     bookingDay:    (data.bookingDay as DayOfWeek) ?? "Sunday",
     supplyDay:     (data.supplyDay as DayOfWeek) ?? "Sunday",
+    expectedSupplyPrice,
     createdAt:     tsToString(data.createdAt),
     lastBookedAt:  (data.lastBookedAt as string) ?? undefined,
+    lastReceivedAt:(data.lastReceivedAt as string) ?? undefined,
   };
 }
 
@@ -414,6 +427,16 @@ export async function setBookingStatus(id: string, booked: boolean): Promise<voi
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
   await updateDoc(doc(db, SCHEDULE_COLLECTION, id), {
     lastBookedAt: booked ? today : null,
+  });
+}
+
+/**
+ * Marks a supplier supply as received (sets lastReceivedAt to today) or clears it.
+ */
+export async function setSupplyReceivedStatus(id: string, received: boolean): Promise<void> {
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  await updateDoc(doc(db, SCHEDULE_COLLECTION, id), {
+    lastReceivedAt: received ? today : null,
   });
 }
 
