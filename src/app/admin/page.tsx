@@ -743,6 +743,8 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
   const [entryNote, setEntryNote] = useState("");
   const [addingEntry, setAddingEntry] = useState(false);
   const [addEntryError, setAddEntryError] = useState("");
+  const [settlingEmployee, setSettlingEmployee] = useState(false);
+  const [settleError, setSettleError] = useState("");
 
   // Edit transaction form
   const [editEntryTarget, setEditEntryTarget] = useState<api.LedgerEntry | null>(null);
@@ -1696,6 +1698,8 @@ function EmployeeLedgerView() {
   const [entryNote, setEntryNote] = useState("");
   const [addingEntry, setAddingEntry] = useState(false);
   const [addEntryError, setAddEntryError] = useState("");
+  const [settlingEmployee, setSettlingEmployee] = useState(false);
+  const [settleError, setSettleError] = useState("");
 
   useEffect(() => {
     const unsub = api.subscribeToEmployees((data) => {
@@ -1863,6 +1867,30 @@ function EmployeeLedgerView() {
     }
   }
 
+  async function handleSettleEmployee() {
+    if (!selectedEmployee || settlingEmployee) return;
+    const amountToSettle = selectedEmployee.balance > 0 ? selectedEmployee.balance : 0;
+    if (amountToSettle <= 0) return;
+
+    const ok = window.confirm(`Settle Rs ${amountToSettle.toLocaleString()} for ${selectedEmployee.name}?`);
+    if (!ok) return;
+
+    setSettleError("");
+    setSettlingEmployee(true);
+    try {
+      await api.addEmployeeLedgerEntry({
+        employeeId: selectedEmployee.id,
+        type: "debit",
+        amount: amountToSettle,
+        note: "Salary settlement",
+      });
+    } catch (err) {
+      setSettleError(err instanceof Error ? err.message : "Failed to settle employee");
+    } finally {
+      setSettlingEmployee(false);
+    }
+  }
+
   const filteredEmployees = (employeeSearch
     ? employees.filter(
         (e) =>
@@ -2015,81 +2043,80 @@ function EmployeeLedgerView() {
       {selectedEmployee ? (
         <div className="flex-1 min-w-0 space-y-4">
           <div className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h3 className="text-[17px] font-bold text-text-dark">{selectedEmployee.name}</h3>
-                <div className="flex flex-wrap gap-4 mt-2">
-                  <span className="text-[12px] text-text-muted">Joined: {fmtDate(selectedEmployee.joiningDate)}</span>
-                  {selectedEmployee.phone && <span className="text-[12px] text-text-muted">📞 {selectedEmployee.phone}</span>}
-                  {selectedEmployee.address && <span className="text-[12px] text-text-muted">📍 {selectedEmployee.address}</span>}
-                </div>
-                {selectedEmployee.salary > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-blue-400">Monthly Salary</p>
-                      <p className="text-[14px] font-black text-blue-700">Rs {selectedEmployee.salary.toLocaleString()}</p>
+            {(() => {
+              const advancesTaken = selectedEmployee.balance > 0 ? selectedEmployee.balance : 0;
+              const netSalaryRemaining = Math.max(0, selectedEmployee.salary - selectedEmployee.balance);
+
+              return (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h3 className="text-[17px] font-bold text-text-dark break-words">{selectedEmployee.name}</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-[12px] text-text-muted">
+                      <span className="truncate">Joined: {fmtDate(selectedEmployee.joiningDate)}</span>
+                      {selectedEmployee.phone && <span className="truncate">📞 {selectedEmployee.phone}</span>}
+                      {selectedEmployee.address && <span className="truncate">📍 {selectedEmployee.address}</span>}
                     </div>
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500">Advances Taken</p>
-                      <p className="text-[14px] font-black text-amber-700">Rs {selectedEmployee.balance > 0 ? selectedEmployee.balance.toLocaleString() : "0"}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Monthly Salary</p>
+                      <p className="text-[16px] font-black text-blue-700 mt-0.5">Rs {selectedEmployee.salary.toLocaleString()}</p>
                     </div>
-                    <div className={`rounded-xl px-4 py-2 border ${
-                      selectedEmployee.salary - selectedEmployee.balance > 0
-                        ? "bg-emerald-50 border-emerald-100"
-                        : "bg-red-50 border-red-100"
+
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Advances Taken</p>
+                      <p className="text-[16px] font-black text-amber-700 mt-0.5">Rs {advancesTaken.toLocaleString()}</p>
+                    </div>
+
+                    <div className={`rounded-xl px-3.5 py-2.5 border ${
+                      netSalaryRemaining > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
                     }`}>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Net Salary Remaining</p>
-                      <p className={`text-[14px] font-black ${
-                        selectedEmployee.salary - selectedEmployee.balance > 0 ? "text-emerald-700" : "text-red-600"
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Net Salary Remaining</p>
+                      <p className={`text-[16px] font-black mt-0.5 ${
+                        netSalaryRemaining > 0 ? "text-emerald-700" : "text-red-600"
                       }`}>
-                        Rs {Math.max(0, selectedEmployee.salary - selectedEmployee.balance).toLocaleString()}
+                        Rs {netSalaryRemaining.toLocaleString()}
                       </p>
                     </div>
                   </div>
-                )}
-              </div>
 
-              <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
-                <div className={`rounded-2xl px-5 py-3 text-right border ${
-                  selectedEmployee.balance > 0
-                    ? "bg-blue-50 border-blue-100"
-                    : selectedEmployee.balance < 0
-                    ? "bg-emerald-50 border-emerald-100"
-                    : "bg-slate-50 border-slate-100"
-                }`}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                    {selectedEmployee.balance > 0 ? "Total Advance Taken" : selectedEmployee.balance < 0 ? "Overpaid" : "No Advance"}
-                  </p>
-                  <p className={`text-[22px] font-black mt-0.5 ${
-                    selectedEmployee.balance > 0
-                      ? "text-blue-700"
-                      : selectedEmployee.balance < 0
-                      ? "text-emerald-600"
-                      : "text-slate-400"
-                  }`}>
-                    {selectedEmployee.balance === 0 ? "✔" : `Rs ${Math.abs(selectedEmployee.balance).toLocaleString()}`}
-                  </p>
-                </div>
+                  <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+                    {selectedEmployee.balance > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleSettleEmployee}
+                        disabled={settlingEmployee}
+                        className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[12px] font-semibold hover:bg-emerald-100 disabled:opacity-60 transition-colors"
+                      >
+                        {settlingEmployee ? "Settling..." : "Settle Salary"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={openEditEmployee}
+                      className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
+                    >
+                      Edit Employee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteEmployee}
+                      disabled={deletingEmployee}
+                      className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
+                    >
+                      {deletingEmployee ? "Removing..." : "Remove Employee"}
+                    </button>
+                  </div>
 
-                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={openEditEmployee}
-                    className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
-                  >
-                    Edit Employee
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteEmployee}
-                    disabled={deletingEmployee}
-                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
-                  >
-                    {deletingEmployee ? "Removing..." : "Remove Employee"}
-                  </button>
+                  {settleError && (
+                    <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                      {settleError}
+                    </p>
+                  )}
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {showEditEmployee && (
