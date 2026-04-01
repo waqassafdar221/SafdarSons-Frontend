@@ -719,6 +719,9 @@ export interface EmployeeLedgerEntry {
   amount: number;
   note?: string;
   createdAt?: string;
+  lastEditedAmount?: number;
+  lastEditedAt?: string;
+  lastEditedBy?: string;
 }
 
 export interface EmployeeLedgerEntryCreate {
@@ -755,6 +758,12 @@ function docToEmployeeLedgerEntry(
     amount:     (data.amount     as number)          ?? 0,
     note:       (data.note       as string)          ?? undefined,
     createdAt:  tsToString(data.createdAt),
+    lastEditedAmount:
+      typeof data.lastEditedAmount === "number"
+        ? (data.lastEditedAmount as number)
+        : undefined,
+    lastEditedAt: tsToString(data.lastEditedAt),
+    lastEditedBy: (data.lastEditedBy as string) ?? undefined,
   };
 }
 
@@ -823,6 +832,44 @@ export async function addEmployeeLedgerEntry(
     };
     if (data.note) payload.note = data.note;
     tx.set(ledgerRef, payload);
+  });
+}
+
+/**
+ * Atomically updates an employee ledger entry and adjusts the employee balance by the delta.
+ */
+export async function updateEmployeeLedgerEntry(
+  id: string,
+  data: EmployeeLedgerEntryCreate
+): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const ledgerRef = doc(db, EMPLOYEE_LEDGER_COLLECTION, id);
+    const ledgerSnap = await tx.get(ledgerRef);
+    if (!ledgerSnap.exists()) throw new Error("Employee ledger entry not found.");
+
+    const existing = docToEmployeeLedgerEntry(
+      ledgerSnap.id,
+      ledgerSnap.data() as Record<string, unknown>
+    );
+
+    const employeeRef = doc(db, EMPLOYEES_COLLECTION, data.employeeId);
+    const employeeSnap = await tx.get(employeeRef);
+    const currentBalance = (employeeSnap.data()?.balance as number) ?? 0;
+    const oldDelta = existing.type === "credit" ? existing.amount : -existing.amount;
+    const newDelta = data.type === "credit" ? data.amount : -data.amount;
+
+    tx.update(employeeRef, { balance: currentBalance + newDelta - oldDelta });
+
+    const payload: Record<string, unknown> = {
+      type: data.type,
+      amount: data.amount,
+      note: data.note || null,
+      lastEditedAmount: existing.amount,
+      lastEditedAt: serverTimestamp(),
+      lastEditedBy: auth.currentUser?.email ?? null,
+    };
+
+    tx.update(ledgerRef, payload);
   });
 }
 
