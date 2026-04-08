@@ -599,10 +599,8 @@ export async function addLedgerEntry(data: LedgerEntryCreate): Promise<void> {
       type:       data.type,
       amount:     data.amount,
       createdAt:  serverTimestamp(),
+      previousCreditBalance: current,
     };
-    if (data.type === "debit") {
-      payload.previousCreditBalance = Math.max(0, current);
-    }
     if (data.note) payload.note = data.note;
     tx.set(ledgerRef, payload);
   });
@@ -644,8 +642,8 @@ export async function updateLedgerEntry(
       lastEditedAt: serverTimestamp(),
       lastEditedBy: auth.currentUser?.email ?? null,
     };
-    if (data.type === "debit" && typeof existing.previousCreditBalance !== "number") {
-      payload.previousCreditBalance = Math.max(0, currentBalance);
+    if (typeof existing.previousCreditBalance !== "number") {
+      payload.previousCreditBalance = currentBalance;
     }
     tx.update(ledgerRef, payload);
   });

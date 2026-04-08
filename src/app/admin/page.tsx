@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import * as api from "@/lib/api";
 import type {
   MedicineRequest,
@@ -736,6 +736,7 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
   const [entries, setEntries] = useState<api.LedgerEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
 
   // Add transaction form
   const [entryType, setEntryType] = useState<api.LedgerEntryType>("credit");
@@ -1484,46 +1485,93 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                   </thead>
                   <tbody className="divide-y divide-border-soft">
                     {entries.map((entry) => (
-                      <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
-                        <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
-                        <td className="px-5 py-3.5 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
-                            entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"
+                      <Fragment key={entry.id}>
+                        <tr className="hover:bg-bg/40 transition-colors">
+                          <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
+                          <td className="px-5 py-3.5 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
+                              entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"
+                            }`}>
+                              {entry.type === "credit" ? "+ Credit" : "− Debit"}
+                            </span>
+                          </td>
+                          <td className={`px-5 py-3.5 text-[13px] font-bold ${
+                            entry.type === "credit" ? "text-rose-600" : "text-emerald-600"
                           }`}>
-                            {entry.type === "credit" ? "+ Credit" : "− Debit"}
-                          </span>
-                        </td>
-                        <td className={`px-5 py-3.5 text-[13px] font-bold ${
-                          entry.type === "credit" ? "text-rose-600" : "text-emerald-600"
-                        }`}>
-                          <div>
-                            <p>Rs {entry.amount.toLocaleString()}</p>
-                            {entry.type === "debit" && typeof entry.previousCreditBalance === "number" && (
-                              <p className="text-[10px] font-medium text-blue-700 mt-0.5">
-                                Previous credit: Rs {entry.previousCreditBalance.toLocaleString()}
-                              </p>
-                            )}
-                            {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
-                              <p className="text-[10px] font-medium text-amber-700 mt-0.5">
-                                Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
-                          {entry.note ?? <span className="text-text-muted italic">—</span>}
-                        </td>
-                        <td className="px-5 py-3.5 pr-6">
-                          <button
-                            type="button"
-                            onClick={() => openEditEntry(entry)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id));
+                              }}
+                              className="w-full text-left cursor-pointer"
+                            >
+                              <div className="flex items-center justify-between gap-2 w-full">
+                                <p className="min-w-0 flex-1">Rs {entry.amount.toLocaleString()}</p>
+                                <span className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6-1.5c-1.8-4.5-5.5-7.5-9-7.5S4.8 6 3 10.5c1.8 4.5 5.5 7.5 9 7.5s7.2-3 9-7.5z" />
+                                  </svg>
+                                </span>
+                              </div>
+                              {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
+                                <p className="text-[10px] font-medium text-amber-700 mt-0.5">
+                                  Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
+                                </p>
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
+                            {entry.note ?? <span className="text-text-muted italic">—</span>}
+                          </td>
+                          <td className="px-5 py-3.5 pr-6">
+                            <button
+                              type="button"
+                              onClick={() => openEditEntry(entry)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                        {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
+                          <tr className="bg-blue-50/50">
+                            <td colSpan={5} className="px-5 py-4 pl-6 pr-6">
+                              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                                <div className="flex items-start justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-blue-500">{entry.type === "credit" ? "Credit Details" : "Debit Details"}</p>
+                                    <p className="text-[13px] font-semibold text-text-dark mt-0.5">{entry.note ?? `${entry.type === "credit" ? "Credit" : "Debit"} transaction`}</p>
+                                  </div>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold whitespace-nowrap">
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8m4-4H8m12 0a8 8 0 11-16 0 8 8 0 0116 0z" />
+                                    </svg>
+                                    {entry.type === "credit" ? "Credit" : "Debit"}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Previous Credit</p>
+                                    <p className="text-[14px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credit Amount" : "Debit Amount"}</p>
+                                    <p className={`text-[14px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Balance Status</p>
+                                    <p className="text-[14px] font-black text-text-dark mt-0.5">
+                                      Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
