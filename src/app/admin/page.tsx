@@ -45,12 +45,12 @@ const STATUS_META: Record<
   RequestStatus | "all",
   { label: string; bg: string; text: string; dot: string }
 > = {
-  all:       { label: "All",       bg: "bg-slate-100",   text: "text-slate-600",  dot: "bg-slate-400"  },
-  pending:   { label: "Pending",   bg: "bg-amber-50",    text: "text-amber-700",  dot: "bg-amber-400"  },
-  arrived:   { label: "Arrived",   bg: "bg-blue-50",     text: "text-blue-700",   dot: "bg-blue-400"   },
-  notified:  { label: "Notified",  bg: "bg-purple-50",   text: "text-purple-700", dot: "bg-purple-400" },
-  collected: { label: "Collected", bg: "bg-emerald-50",  text: "text-emerald-700",dot: "bg-emerald-400"},
-  cancelled: { label: "Cancelled", bg: "bg-red-50",      text: "text-red-700",    dot: "bg-red-400"    },
+  all:       { label: "All",       bg: "bg-slate-100",   text: "text-slate-600",   dot: "bg-slate-400"   },
+  pending:   { label: "Pending",   bg: "bg-amber-50",    text: "text-amber-700",   dot: "bg-amber-400"   },
+  arrived:   { label: "Arrived",   bg: "bg-blue-50",     text: "text-blue-700",    dot: "bg-blue-400"    },
+  notified:  { label: "Notified",  bg: "bg-purple-50",   text: "text-purple-700",  dot: "bg-purple-400"  },
+  collected: { label: "Collected", bg: "bg-emerald-50",  text: "text-emerald-700", dot: "bg-emerald-400" },
+  cancelled: { label: "Cancelled", bg: "bg-red-50",      text: "text-red-700",     dot: "bg-red-400"     },
 };
 
 function StatusBadge({ status }: { status: RequestStatus }) {
@@ -89,15 +89,15 @@ function isSameLocalDay(dateStr: string, refDate = new Date()) {
 
 // ─── Stats Cards ─────────────────────────────────────────────────────────────
 const STAT_CARDS = [
-  { key: "total",     label: "Total",     color: "from-slate-700 to-slate-900",     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-  { key: "pending",   label: "Pending",   color: "from-amber-500 to-orange-600",    icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { key: "arrived",   label: "Arrived",   color: "from-blue-500 to-indigo-600",     icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
-  { key: "notified",  label: "Notified",  color: "from-purple-500 to-violet-600",   icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
-  { key: "collected", label: "Collected", color: "from-emerald-500 to-teal-600",    icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { key: "cancelled", label: "Cancelled", color: "from-red-500 to-rose-600",        icon: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { key: "total",     label: "Total",     color: "from-slate-700 to-slate-900",   icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+  { key: "pending",   label: "Pending",   color: "from-amber-500 to-orange-600", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { key: "arrived",   label: "Arrived",   color: "from-blue-500 to-indigo-600",  icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+  { key: "notified",  label: "Notified",  color: "from-purple-500 to-violet-600",icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
+  { key: "collected", label: "Collected", color: "from-emerald-500 to-teal-600", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { key: "cancelled", label: "Cancelled", color: "from-red-500 to-rose-600",     icon: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" },
 ] as const;
 
-// ─── Request Form Modal ───────────────────────────────────────────────────────
+// ─── Request Form Modal ──────────────────────────────────────────────────────
 interface ModalProps {
   mode: "create" | "edit";
   initial?: MedicineRequest | null;
@@ -121,13 +121,13 @@ function RequestModal({ mode, initial, onClose, onSave }: ModalProps) {
     initial
       ? {
           customerName: initial.customerName,
-          phone:         initial.phone,
-          medicineName:  initial.medicineName,
-          quantity:      initial.quantity,
-          supplierName:  initial.supplierName,
-          companyName:   initial.companyName ?? "",
-          notes:         initial.notes ?? "",
-          expectedDate:  initial.expectedDate ?? "",
+          phone: initial.phone,
+          medicineName: initial.medicineName,
+          quantity: initial.quantity,
+          supplierName: initial.supplierName,
+          companyName: initial.companyName ?? "",
+          notes: initial.notes ?? "",
+          expectedDate: initial.expectedDate ?? "",
         }
       : { ...EMPTY_FORM }
   );
@@ -1474,7 +1474,73 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 <p className="text-[13px] text-text-muted">No transactions yet. Add one above.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                <div className="md:hidden p-3 space-y-2">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border border-border-soft bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-text-muted">{fmt(entry.createdAt)}</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
+                          {entry.type === "credit" ? "+ Credit" : "− Debit"}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))}
+                        className={`mt-2 w-full text-left ${entry.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[14px] font-bold">Rs {entry.amount.toLocaleString()}</p>
+                          <span className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 text-slate-500">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6-1.5c-1.8-4.5-5.5-7.5-9-7.5S4.8 6 3 10.5c1.8 4.5 5.5 7.5 9 7.5s7.2-3 9-7.5z" />
+                            </svg>
+                          </span>
+                        </div>
+                        {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
+                          <p className="text-[10px] font-medium text-amber-700 mt-1">
+                            Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
+                          </p>
+                        )}
+                      </button>
+
+                      <p className="mt-2 text-[12px] text-text-dark">{entry.note ?? <span className="text-text-muted italic">—</span>}</p>
+
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => openEditEntry(entry)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                          Edit
+                        </button>
+                      </div>
+
+                      {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
+                        <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/50 px-3 py-3 animate-ledger-details-open">
+                          <div className="grid grid-cols-1 gap-2">
+                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Previous Credit</p>
+                              <p className="text-[13px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
+                            </div>
+                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credit Amount" : "Debit Amount"}</p>
+                              <p className={`text-[13px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
+                            </div>
+                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Balance Status</p>
+                              <p className="text-[13px] font-black text-text-dark mt-0.5">Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-bg/60">
@@ -1535,9 +1601,9 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                           </td>
                         </tr>
                         {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
-                          <tr className="bg-blue-50/50">
+                          <tr className="bg-blue-50/50 animate-ledger-details-open">
                             <td colSpan={5} className="px-5 py-4 pl-6 pr-6">
-                              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm animate-ledger-details-open">
                                 <div className="flex items-start justify-between gap-3 flex-wrap">
                                   <div>
                                     <p className="text-[11px] font-bold uppercase tracking-wider text-blue-500">{entry.type === "credit" ? "Credit Details" : "Debit Details"}</p>
@@ -1575,7 +1641,8 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                     ))}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </div>
 
@@ -1714,6 +1781,22 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
         @keyframes customer-ledger-ticker-loop {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
+        }
+
+        @keyframes ledger-details-open {
+          0% {
+            opacity: 0;
+            transform: translateY(-6px) scaleY(0.98);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scaleY(1);
+          }
+        }
+
+        .animate-ledger-details-open {
+          animation: ledger-details-open 220ms ease-out;
+          transform-origin: top;
         }
       `}</style>
     </div>
