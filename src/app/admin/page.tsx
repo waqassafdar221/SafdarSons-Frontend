@@ -1393,7 +1393,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 <button
                   type="button"
                   onClick={() => setEntryType("credit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
                     entryType === "credit" ? "bg-rose-500 text-white" : "bg-white text-text-muted hover:bg-bg"
                   }`}
                 >
@@ -1402,7 +1402,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 <button
                   type="button"
                   onClick={() => setEntryType("debit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
                     entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
                   }`}
                 >
@@ -1486,8 +1486,8 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                     {entries.map((entry) => (
                       <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
                         <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
                             entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"
                           }`}>
                             {entry.type === "credit" ? "+ Credit" : "− Debit"}
@@ -1498,6 +1498,11 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                         }`}>
                           <div>
                             <p>Rs {entry.amount.toLocaleString()}</p>
+                            {entry.type === "debit" && typeof entry.previousCreditBalance === "number" && (
+                              <p className="text-[10px] font-medium text-blue-700 mt-0.5">
+                                Previous credit: Rs {entry.previousCreditBalance.toLocaleString()}
+                              </p>
+                            )}
                             {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
                               <p className="text-[10px] font-medium text-amber-700 mt-0.5">
                                 Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
@@ -2263,7 +2268,7 @@ function EmployeeLedgerView() {
                 <button
                   type="button"
                   onClick={() => setEntryType("credit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
                     entryType === "credit" ? "bg-blue-600 text-white" : "bg-white text-text-muted hover:bg-bg"
                   }`}
                 >
@@ -2272,7 +2277,7 @@ function EmployeeLedgerView() {
                 <button
                   type="button"
                   onClick={() => setEntryType("debit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
+                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
                     entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
                   }`}
                 >
@@ -2332,8 +2337,8 @@ function EmployeeLedgerView() {
                     {entries.map((entry) => (
                       <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
                         <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
                             entry.type === "credit" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"
                           }`}>
                             {entry.type === "credit" ? "+ Credit" : "− Debit"}

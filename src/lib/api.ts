@@ -492,6 +492,8 @@ export interface LedgerEntry {
   amount: number;
   note?: string;
   createdAt?: string;
+  /** Outstanding customer credit/balance before this debit was recorded. */
+  previousCreditBalance?: number;
   lastEditedAmount?: number;
   lastEditedAt?: string;
   lastEditedBy?: string;
@@ -519,6 +521,7 @@ function docToCustomer(id: string, data: Record<string, unknown>): Customer {
 }
 
 function docToLedgerEntry(id: string, data: Record<string, unknown>): LedgerEntry {
+  const rawPrevCredit = (data.previousCreditBalance as unknown);
   return {
     id,
     customerId: (data.customerId as string)         ?? "",
@@ -526,6 +529,12 @@ function docToLedgerEntry(id: string, data: Record<string, unknown>): LedgerEntr
     amount:     (data.amount     as number)          ?? 0,
     note:       (data.note       as string)          ?? undefined,
     createdAt:  tsToString(data.createdAt),
+    previousCreditBalance:
+      typeof rawPrevCredit === "number"
+        ? rawPrevCredit
+        : rawPrevCredit != null
+        ? Number(rawPrevCredit)
+        : undefined,
     lastEditedAmount: (data.lastEditedAmount as number) ?? undefined,
     lastEditedAt: tsToString(data.lastEditedAt),
     lastEditedBy: (data.lastEditedBy as string) ?? undefined,
@@ -591,6 +600,9 @@ export async function addLedgerEntry(data: LedgerEntryCreate): Promise<void> {
       amount:     data.amount,
       createdAt:  serverTimestamp(),
     };
+    if (data.type === "debit") {
+      payload.previousCreditBalance = Math.max(0, current);
+    }
     if (data.note) payload.note = data.note;
     tx.set(ledgerRef, payload);
   });
@@ -632,6 +644,9 @@ export async function updateLedgerEntry(
       lastEditedAt: serverTimestamp(),
       lastEditedBy: auth.currentUser?.email ?? null,
     };
+    if (data.type === "debit" && typeof existing.previousCreditBalance !== "number") {
+      payload.previousCreditBalance = Math.max(0, currentBalance);
+    }
     tx.update(ledgerRef, payload);
   });
 }
