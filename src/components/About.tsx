@@ -58,7 +58,7 @@ export default function About() {
             {/* Experience badge */}
             <div className="absolute -bottom-4 -right-4 sm:-right-6 bg-white rounded-2xl shadow-xl shadow-black/8 p-4 animate-float-delayed hidden sm:block">
               <div className="text-center">
-                <p className="text-3xl font-bold bg-gradient-to-r from-primary to-emerald-500 bg-clip-text text-transparent">15+</p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-primary to-emerald-500 bg-clip-text text-transparent">2+</p>
                 <p className="text-xs font-medium text-text-muted mt-0.5">Years of Trust</p>
               </div>
             </div>
@@ -77,10 +77,10 @@ export default function About() {
 
             <h2 className="text-3xl sm:text-4xl font-bold text-text-dark leading-tight tracking-[-0.03em]">
               Caring for families{" "}
-              <span className="bg-gradient-to-r from-primary to-emerald-500 bg-clip-text text-transparent">
+              {/* <span className="bg-gradient-to-r from-primary to-emerald-500 bg-clip-text text-transparent">
                 &amp; animals
-              </span>{" "}
-              since 2010
+              </span>{" "} */}
+              since 2025
             </h2>
 
             <p className="text-text-soft leading-relaxed text-base sm:text-[17px]">

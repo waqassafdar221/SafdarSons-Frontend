@@ -2222,7 +2222,7 @@ function EmployeeLedgerView() {
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
                   <p className="text-[11px] text-text-muted">Joined: {fmtDate(employee.joiningDate)}</p>
-                  {employee.salary > 0 && <p className="text-[10px] text-blue-600 font-semibold">Salary: Rs {employee.salary.toLocaleString()}</p>}
+                  {/* {employee.salary > 0 && <p className="text-[10px] text-blue-600 font-semibold">Salary: Rs {employee.salary.toLocaleString()}</p>} */}
                 </div>
                 <span className={`text-[12px] font-bold shrink-0 ${
                   employee.balance > 0 ? "text-blue-700" : employee.balance < 0 ? "text-emerald-600" : "text-slate-400"
