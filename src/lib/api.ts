@@ -710,6 +710,8 @@ export interface Employee {
   name: string;
   joiningDate: string;
   salary: number;
+  /** Max allowed credit as a percentage of monthly salary. */
+  creditLimitPercent: number;
   phone?: string;
   address?: string;
   /** Running balance: credit increases (advance taken), debit decreases (paid out). */
@@ -721,6 +723,7 @@ export interface EmployeeCreate {
   name: string;
   joiningDate: string;
   salary: number;
+  creditLimitPercent?: number;
   phone?: string;
   address?: string;
 }
@@ -746,6 +749,14 @@ export interface EmployeeLedgerEntryCreate {
 
 const EMPLOYEES_COLLECTION       = "employees";
 const EMPLOYEE_LEDGER_COLLECTION = "employeeLedgerEntries";
+const DEFAULT_EMPLOYEE_CREDIT_LIMIT_PERCENT = 30;
+
+function normalizeEmployeeCreditLimitPercent(value?: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_EMPLOYEE_CREDIT_LIMIT_PERCENT;
+  }
+  return Math.max(1, Math.min(100, value));
+}
 
 function docToEmployee(id: string, data: Record<string, unknown>): Employee {
   return {
@@ -753,6 +764,7 @@ function docToEmployee(id: string, data: Record<string, unknown>): Employee {
     name:        (data.name        as string) ?? "",
     joiningDate: (data.joiningDate as string) ?? "",
     salary:      (data.salary      as number) ?? 0,
+    creditLimitPercent: normalizeEmployeeCreditLimitPercent(data.creditLimitPercent as number | undefined),
     phone:       (data.phone       as string) ?? undefined,
     address:     (data.address     as string) ?? undefined,
     balance:     (data.balance     as number) ?? 0,
@@ -783,6 +795,7 @@ function docToEmployeeLedgerEntry(
 export async function addEmployee(data: EmployeeCreate): Promise<Employee> {
   const ref = await addDoc(collection(db, EMPLOYEES_COLLECTION), {
     ...data,
+    creditLimitPercent: normalizeEmployeeCreditLimitPercent(data.creditLimitPercent),
     balance: 0,
     createdAt: serverTimestamp(),
   });
@@ -798,6 +811,9 @@ export async function updateEmployee(
   if (data.name !== undefined) payload.name = data.name;
   if (data.joiningDate !== undefined) payload.joiningDate = data.joiningDate;
   if (data.salary !== undefined) payload.salary = data.salary;
+  if (data.creditLimitPercent !== undefined) {
+    payload.creditLimitPercent = normalizeEmployeeCreditLimitPercent(data.creditLimitPercent);
+  }
   if (data.phone !== undefined) payload.phone = data.phone || null;
   if (data.address !== undefined) payload.address = data.address || null;
   await updateDoc(doc(db, EMPLOYEES_COLLECTION, id), payload);
@@ -832,7 +848,23 @@ export async function addEmployeeLedgerEntry(
   await runTransaction(db, async (tx) => {
     const employeeRef  = doc(db, EMPLOYEES_COLLECTION, data.employeeId);
     const employeeSnap = await tx.get(employeeRef);
-    const current      = (employeeSnap.data()?.balance as number) ?? 0;
+    if (!employeeSnap.exists()) throw new Error("Employee not found.");
+
+    const employeeData = employeeSnap.data() as Record<string, unknown>;
+    const current = (employeeData.balance as number) ?? 0;
+    const salary = (employeeData.salary as number) ?? 0;
+    const creditLimitPercent = normalizeEmployeeCreditLimitPercent(
+      employeeData.creditLimitPercent as number | undefined
+    );
+
+    const currentCreditUsed = current > 0 ? current : 0;
+    const allowedCredit = (salary * creditLimitPercent) / 100;
+    if (data.type === "credit" && currentCreditUsed + data.amount > allowedCredit + 0.000001) {
+      throw new Error(
+        `Credit limit exceeded. Max allowed is Rs ${allowedCredit.toLocaleString()} (${creditLimitPercent}% of salary).`
+      );
+    }
+
     const delta        = data.type === "credit" ? data.amount : -data.amount;
     tx.update(employeeRef, { balance: current + delta });
 
@@ -867,11 +899,26 @@ export async function updateEmployeeLedgerEntry(
 
     const employeeRef = doc(db, EMPLOYEES_COLLECTION, data.employeeId);
     const employeeSnap = await tx.get(employeeRef);
-    const currentBalance = (employeeSnap.data()?.balance as number) ?? 0;
+    if (!employeeSnap.exists()) throw new Error("Employee not found.");
+
+    const employeeData = employeeSnap.data() as Record<string, unknown>;
+    const currentBalance = (employeeData.balance as number) ?? 0;
+    const salary = (employeeData.salary as number) ?? 0;
+    const creditLimitPercent = normalizeEmployeeCreditLimitPercent(
+      employeeData.creditLimitPercent as number | undefined
+    );
     const oldDelta = existing.type === "credit" ? existing.amount : -existing.amount;
     const newDelta = data.type === "credit" ? data.amount : -data.amount;
+    const projectedBalance = currentBalance + newDelta - oldDelta;
+    const projectedCreditUsed = projectedBalance > 0 ? projectedBalance : 0;
+    const allowedCredit = (salary * creditLimitPercent) / 100;
+    if (projectedCreditUsed > allowedCredit + 0.000001) {
+      throw new Error(
+        `Credit limit exceeded. Max allowed is Rs ${allowedCredit.toLocaleString()} (${creditLimitPercent}% of salary).`
+      );
+    }
 
-    tx.update(employeeRef, { balance: currentBalance + newDelta - oldDelta });
+    tx.update(employeeRef, { balance: projectedBalance });
 
     const payload: Record<string, unknown> = {
       type: data.type,

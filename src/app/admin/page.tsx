@@ -1811,13 +1811,13 @@ function EmployeeLedgerView() {
 
   // Add employee form
   const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
+  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [addEmployeeError, setAddEmployeeError] = useState("");
 
   // Edit employee form
   const [showEditEmployee, setShowEditEmployee] = useState(false);
-  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
+  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
   const [editingEmployee, setEditingEmployee] = useState(false);
   const [editEmployeeError, setEditEmployeeError] = useState("");
   const [deletingEmployee, setDeletingEmployee] = useState(false);
@@ -1867,6 +1867,7 @@ function EmployeeLedgerView() {
         name: updated.name,
         joiningDate: updated.joiningDate,
         salary: String(updated.salary ?? ""),
+        creditLimitPercent: String(updated.creditLimitPercent ?? 30),
         phone: updated.phone ?? "",
         address: updated.address ?? "",
       });
@@ -1903,6 +1904,11 @@ function EmployeeLedgerView() {
       setAddEmployeeError("Enter a valid monthly salary.");
       return;
     }
+    const creditLimitPercentNum = parseFloat(newEmployee.creditLimitPercent);
+    if (!newEmployee.creditLimitPercent || isNaN(creditLimitPercentNum) || creditLimitPercentNum <= 0 || creditLimitPercentNum > 100) {
+      setAddEmployeeError("Credit limit percentage must be between 1 and 100.");
+      return;
+    }
 
     setAddingEmployee(true);
     try {
@@ -1910,10 +1916,11 @@ function EmployeeLedgerView() {
         name: newEmployee.name.trim(),
         joiningDate: newEmployee.joiningDate,
         salary: salaryNum,
+        creditLimitPercent: creditLimitPercentNum,
         phone: newEmployee.phone.trim(),
         address: newEmployee.address.trim(),
       });
-      setNewEmployee({ name: "", joiningDate: "", salary: "", phone: "", address: "" });
+      setNewEmployee({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
       setShowAddEmployee(false);
     } catch (err) {
       setAddEmployeeError(err instanceof Error ? err.message : "Failed");
@@ -1928,6 +1935,7 @@ function EmployeeLedgerView() {
       name: selectedEmployee.name,
       joiningDate: selectedEmployee.joiningDate,
       salary: String(selectedEmployee.salary ?? ""),
+      creditLimitPercent: String(selectedEmployee.creditLimitPercent ?? 30),
       phone: selectedEmployee.phone ?? "",
       address: selectedEmployee.address ?? "",
     });
@@ -1953,6 +1961,11 @@ function EmployeeLedgerView() {
       setEditEmployeeError("Enter a valid monthly salary.");
       return;
     }
+    const editCreditLimitPercentNum = parseFloat(editEmployee.creditLimitPercent);
+    if (!editEmployee.creditLimitPercent || isNaN(editCreditLimitPercentNum) || editCreditLimitPercentNum <= 0 || editCreditLimitPercentNum > 100) {
+      setEditEmployeeError("Credit limit percentage must be between 1 and 100.");
+      return;
+    }
 
     setEditingEmployee(true);
     try {
@@ -1960,6 +1973,7 @@ function EmployeeLedgerView() {
         name: editEmployee.name.trim(),
         joiningDate: editEmployee.joiningDate,
         salary: editSalaryNum,
+        creditLimitPercent: editCreditLimitPercentNum,
         phone: editEmployee.phone.trim(),
         address: editEmployee.address.trim(),
       });
@@ -1996,6 +2010,16 @@ function EmployeeLedgerView() {
     const amount = parseFloat(entryAmount);
     if (!entryAmount || isNaN(amount) || amount <= 0) {
       setAddEntryError("Enter a valid positive amount.");
+      return;
+    }
+
+    const creditLimitPercent = selectedEmployee.creditLimitPercent ?? 30;
+    const allowedCredit = (selectedEmployee.salary * creditLimitPercent) / 100;
+    const currentCreditUsed = Math.max(0, selectedEmployee.balance);
+    if (entryType === "credit" && currentCreditUsed + amount > allowedCredit + 0.000001) {
+      setAddEntryError(
+        `Credit limit exceeded. Allowed: Rs ${allowedCredit.toLocaleString()} (${creditLimitPercent}% of salary), current used: Rs ${currentCreditUsed.toLocaleString()}.`
+      );
       return;
     }
 
@@ -2064,6 +2088,19 @@ function EmployeeLedgerView() {
     }
     if (!editEntryForm.password.trim()) {
       setEditEntryError("Admin password is required.");
+      return;
+    }
+
+    const creditLimitPercent = selectedEmployee.creditLimitPercent ?? 30;
+    const allowedCredit = (selectedEmployee.salary * creditLimitPercent) / 100;
+    const oldDelta = editEntryTarget.type === "credit" ? editEntryTarget.amount : -editEntryTarget.amount;
+    const newDelta = editEntryForm.type === "credit" ? amount : -amount;
+    const projectedBalance = selectedEmployee.balance + newDelta - oldDelta;
+    const projectedCreditUsed = Math.max(0, projectedBalance);
+    if (projectedCreditUsed > allowedCredit + 0.000001) {
+      setEditEntryError(
+        `Credit limit exceeded. Allowed: Rs ${allowedCredit.toLocaleString()} (${creditLimitPercent}% of salary), projected used: Rs ${projectedCreditUsed.toLocaleString()}.`
+      );
       return;
     }
 
@@ -2168,6 +2205,20 @@ function EmployeeLedgerView() {
                 className={inputCls + " pl-9"}
               />
             </div>
+            <div className="relative">
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">%</span>
+              <input
+                required
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={newEmployee.creditLimitPercent}
+                onChange={(e) => setNewEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))}
+                placeholder="Credit Limit % (default 30)"
+                className={inputCls + " pr-8"}
+              />
+            </div>
             <input
               value={newEmployee.phone}
               onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))}
@@ -2245,6 +2296,11 @@ function EmployeeLedgerView() {
             {(() => {
               const advancesTaken = selectedEmployee.balance > 0 ? selectedEmployee.balance : 0;
               const netSalaryRemaining = Math.max(0, selectedEmployee.salary - selectedEmployee.balance);
+              const creditLimitPercent = selectedEmployee.creditLimitPercent ?? 30;
+              const creditAllowed = (selectedEmployee.salary * creditLimitPercent) / 100;
+              const creditUsedVsSalaryPercent = selectedEmployee.salary > 0 ? (advancesTaken / selectedEmployee.salary) * 100 : 0;
+              const creditUsedVsLimitPercent = creditAllowed > 0 ? (advancesTaken / creditAllowed) * 100 : 0;
+              const creditUsageProgress = Math.max(0, Math.min(100, creditUsedVsLimitPercent));
 
               return (
                 <div className="space-y-4">
@@ -2278,6 +2334,24 @@ function EmployeeLedgerView() {
                         Rs {netSalaryRemaining.toLocaleString()}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3.5 py-3 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Credit Usage</p>
+                      <span className={`text-[11px] font-bold ${creditUsedVsLimitPercent > 100 ? "text-red-600" : "text-indigo-700"}`}>
+                        {creditUsedVsSalaryPercent.toFixed(1)}% of salary · {creditUsedVsLimitPercent.toFixed(1)}% of limit
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-white/80 border border-indigo-100 overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${creditUsedVsLimitPercent > 100 ? "bg-red-500" : "bg-indigo-500"}`}
+                        style={{ width: `${creditUsageProgress}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-indigo-700">
+                      Limit: Rs {creditAllowed.toLocaleString()} ({creditLimitPercent}% of salary) · Used: Rs {advancesTaken.toLocaleString()}
+                    </p>
                   </div>
 
                   <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
@@ -2362,6 +2436,20 @@ function EmployeeLedgerView() {
                     onChange={(e) => setEditEmployee((v) => ({ ...v, salary: e.target.value }))}
                     placeholder="Monthly Salary *"
                     className={inputCls + " pl-9"}
+                  />
+                </div>
+                <div className="relative">
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">%</span>
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={editEmployee.creditLimitPercent}
+                    onChange={(e) => setEditEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))}
+                    placeholder="Credit Limit %"
+                    className={inputCls + " pr-8"}
                   />
                 </div>
                 <input
