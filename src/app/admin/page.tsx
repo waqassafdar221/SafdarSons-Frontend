@@ -1811,13 +1811,13 @@ function EmployeeLedgerView() {
 
   // Add employee form
   const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
+  const [newEmployee, setNewEmployee] = useState({ name: "", joiningDate: "", salary: "", salaryType: "monthly" as "weekly" | "monthly", creditLimitPercent: "30", phone: "", address: "" });
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [addEmployeeError, setAddEmployeeError] = useState("");
 
   // Edit employee form
   const [showEditEmployee, setShowEditEmployee] = useState(false);
-  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
+  const [editEmployee, setEditEmployee] = useState({ name: "", joiningDate: "", salary: "", salaryType: "monthly" as "weekly" | "monthly", creditLimitPercent: "30", phone: "", address: "" });
   const [editingEmployee, setEditingEmployee] = useState(false);
   const [editEmployeeError, setEditEmployeeError] = useState("");
   const [deletingEmployee, setDeletingEmployee] = useState(false);
@@ -1867,6 +1867,7 @@ function EmployeeLedgerView() {
         name: updated.name,
         joiningDate: updated.joiningDate,
         salary: String(updated.salary ?? ""),
+        salaryType: (updated.salaryType ?? "monthly") as "weekly" | "monthly",
         creditLimitPercent: String(updated.creditLimitPercent ?? 30),
         phone: updated.phone ?? "",
         address: updated.address ?? "",
@@ -1916,11 +1917,12 @@ function EmployeeLedgerView() {
         name: newEmployee.name.trim(),
         joiningDate: newEmployee.joiningDate,
         salary: salaryNum,
+        salaryType: newEmployee.salaryType as "weekly" | "monthly",
         creditLimitPercent: creditLimitPercentNum,
         phone: newEmployee.phone.trim(),
         address: newEmployee.address.trim(),
       });
-      setNewEmployee({ name: "", joiningDate: "", salary: "", creditLimitPercent: "30", phone: "", address: "" });
+      setNewEmployee({ name: "", joiningDate: "", salary: "", salaryType: "monthly", creditLimitPercent: "30", phone: "", address: "" });
       setShowAddEmployee(false);
     } catch (err) {
       setAddEmployeeError(err instanceof Error ? err.message : "Failed");
@@ -1935,6 +1937,7 @@ function EmployeeLedgerView() {
       name: selectedEmployee.name,
       joiningDate: selectedEmployee.joiningDate,
       salary: String(selectedEmployee.salary ?? ""),
+      salaryType: (selectedEmployee.salaryType ?? "monthly") as "weekly" | "monthly",
       creditLimitPercent: String(selectedEmployee.creditLimitPercent ?? 30),
       phone: selectedEmployee.phone ?? "",
       address: selectedEmployee.address ?? "",
@@ -1973,6 +1976,7 @@ function EmployeeLedgerView() {
         name: editEmployee.name.trim(),
         joiningDate: editEmployee.joiningDate,
         salary: editSalaryNum,
+        salaryType: editEmployee.salaryType as "weekly" | "monthly",
         creditLimitPercent: editCreditLimitPercentNum,
         phone: editEmployee.phone.trim(),
         address: editEmployee.address.trim(),
@@ -2219,6 +2223,15 @@ function EmployeeLedgerView() {
                 className={inputCls + " pr-8"}
               />
             </div>
+            <select
+              required
+              value={newEmployee.salaryType}
+              onChange={(e) => setNewEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))}
+              className={inputCls}
+            >
+              <option value="monthly">Monthly Salary</option>
+              <option value="weekly">Weekly Salary</option>
+            </select>
             <input
               value={newEmployee.phone}
               onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))}
@@ -2275,7 +2288,7 @@ function EmployeeLedgerView() {
                   <p className="text-[11px] text-text-muted">Joined: {fmtDate(employee.joiningDate)}</p>
                   {/* {employee.salary > 0 && <p className="text-[10px] text-blue-600 font-semibold">Salary: Rs {employee.salary.toLocaleString()}</p>} */}
                 </div>
-                <span className={`text-[12px] font-bold shrink-0 ${
+                {/* <span className={`text-[12px] font-bold shrink-0 ${
                   employee.balance > 0 ? "text-blue-700" : employee.balance < 0 ? "text-emerald-600" : "text-slate-400"
                 }`}>
                   {employee.balance > 0
@@ -2283,7 +2296,7 @@ function EmployeeLedgerView() {
                     : employee.balance < 0
                     ? `-Rs ${Math.abs(employee.balance).toLocaleString()}`
                     : "Settled"}
-                </span>
+                </span> */}
               </div>
             </button>
           ))}
@@ -2308,6 +2321,7 @@ function EmployeeLedgerView() {
                     <h3 className="text-[17px] font-bold text-text-dark break-words">{selectedEmployee.name}</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-[12px] text-text-muted">
                       <span className="truncate">Joined: {fmtDate(selectedEmployee.joiningDate)}</span>
+                      <span className="truncate">📅 {selectedEmployee.salaryType === "weekly" ? "Weekly" : "Monthly"} Salary</span>
                       {selectedEmployee.phone && <span className="truncate">📞 {selectedEmployee.phone}</span>}
                       {selectedEmployee.address && <span className="truncate">📍 {selectedEmployee.address}</span>}
                     </div>
@@ -2452,6 +2466,15 @@ function EmployeeLedgerView() {
                     className={inputCls + " pr-8"}
                   />
                 </div>
+                <select
+                  required
+                  value={editEmployee.salaryType}
+                  onChange={(e) => setEditEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))}
+                  className={inputCls}
+                >
+                  <option value="monthly">Monthly Salary</option>
+                  <option value="weekly">Weekly Salary</option>
+                </select>
                 <input
                   value={editEmployee.phone}
                   onChange={(e) => setEditEmployee((v) => ({ ...v, phone: e.target.value }))}

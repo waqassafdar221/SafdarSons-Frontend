@@ -710,6 +710,8 @@ export interface Employee {
   name: string;
   joiningDate: string;
   salary: number;
+  /** Salary frequency: "weekly" or "monthly". */
+  salaryType: "weekly" | "monthly";
   /** Max allowed credit as a percentage of monthly salary. */
   creditLimitPercent: number;
   phone?: string;
@@ -723,6 +725,7 @@ export interface EmployeeCreate {
   name: string;
   joiningDate: string;
   salary: number;
+  salaryType?: "weekly" | "monthly";
   creditLimitPercent?: number;
   phone?: string;
   address?: string;
@@ -750,6 +753,7 @@ export interface EmployeeLedgerEntryCreate {
 const EMPLOYEES_COLLECTION       = "employees";
 const EMPLOYEE_LEDGER_COLLECTION = "employeeLedgerEntries";
 const DEFAULT_EMPLOYEE_CREDIT_LIMIT_PERCENT = 30;
+const DEFAULT_EMPLOYEE_SALARY_TYPE: "weekly" | "monthly" = "monthly";
 
 function normalizeEmployeeCreditLimitPercent(value?: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -759,11 +763,15 @@ function normalizeEmployeeCreditLimitPercent(value?: number): number {
 }
 
 function docToEmployee(id: string, data: Record<string, unknown>): Employee {
+  const salaryType = data.salaryType as string | undefined;
+  const normalizedSalaryType: "weekly" | "monthly" = 
+    salaryType === "weekly" || salaryType === "monthly" ? salaryType : DEFAULT_EMPLOYEE_SALARY_TYPE;
   return {
     id,
     name:        (data.name        as string) ?? "",
     joiningDate: (data.joiningDate as string) ?? "",
     salary:      (data.salary      as number) ?? 0,
+    salaryType: normalizedSalaryType,
     creditLimitPercent: normalizeEmployeeCreditLimitPercent(data.creditLimitPercent as number | undefined),
     phone:       (data.phone       as string) ?? undefined,
     address:     (data.address     as string) ?? undefined,
@@ -793,8 +801,10 @@ function docToEmployeeLedgerEntry(
 }
 
 export async function addEmployee(data: EmployeeCreate): Promise<Employee> {
+  const salaryType = data.salaryType === "weekly" || data.salaryType === "monthly" ? data.salaryType : DEFAULT_EMPLOYEE_SALARY_TYPE;
   const ref = await addDoc(collection(db, EMPLOYEES_COLLECTION), {
     ...data,
+    salaryType,
     creditLimitPercent: normalizeEmployeeCreditLimitPercent(data.creditLimitPercent),
     balance: 0,
     createdAt: serverTimestamp(),
@@ -811,6 +821,10 @@ export async function updateEmployee(
   if (data.name !== undefined) payload.name = data.name;
   if (data.joiningDate !== undefined) payload.joiningDate = data.joiningDate;
   if (data.salary !== undefined) payload.salary = data.salary;
+  if (data.salaryType !== undefined) {
+    const salaryType = data.salaryType === "weekly" || data.salaryType === "monthly" ? data.salaryType : DEFAULT_EMPLOYEE_SALARY_TYPE;
+    payload.salaryType = salaryType;
+  }
   if (data.creditLimitPercent !== undefined) {
     payload.creditLimitPercent = normalizeEmployeeCreditLimitPercent(data.creditLimitPercent);
   }
