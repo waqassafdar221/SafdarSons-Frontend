@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as api from "@/lib/api";
 import type {
   MedicineRequest,
@@ -711,23 +711,287 @@ function OrderSummaryView({
 }
 
 // ─── Customer Ledger View ────────────────────────────────────────────────────
-function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCustomer: boolean; setShowAddCustomer: (v: boolean) => void }) {
+function CashflowAnalyticsView({ onSelectCustomer }: { onSelectCustomer: (customerId: string) => void }) {
+  const [customers, setCustomers] = useState<api.Customer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
+
+  useEffect(() => {
+    const unsub = api.subscribeToCustomers((data) => {
+      setCustomers(data);
+      setLoadingCustomers(false);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOnce() {
+      try {
+        const entries = await api.getAllLedgerEntriesOnce();
+        if (!cancelled) {
+          setAllLedgerEntries(entries);
+        }
+      } catch (e) {
+        console.error("Failed to load ledger entries for analytics", e);
+      }
+    }
+
+    loadOnce();
+    const intervalId = setInterval(loadOnce, 30 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  const cashflowAnalytics = useMemo(() => {
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+    const recentDays = Array.from({ length: 7 }).map((_, i) => {
+      const date = new Date(now.getTime() - (6 - i) * dayMs);
+      const start = startOfDay(date);
+      return {
+        label: start.toLocaleDateString("en-PK", { weekday: "short" }),
+        key: dayKey(start),
+        value: 0,
+      };
+    });
+
+    const dailyMap = new Map(recentDays.map((d) => [d.key, 0]));
+    let weeklyNet = 0;
+    let todayNet = 0;
+
+    const weekStart = startOfDay(new Date(now.getTime() - 6 * dayMs));
+    const todayStart = startOfDay(now);
+
+    const entriesByCustomer = new Map<string, api.LedgerEntry[]>();
+
+    allLedgerEntries.forEach((entry) => {
+      if (!entry.createdAt) return;
+      const created = new Date(entry.createdAt);
+      const delta = entry.type === "credit" ? entry.amount : -entry.amount;
+
+      if (created >= weekStart) {
+        weeklyNet += delta;
+      }
+
+      if (created >= todayStart) {
+        todayNet += delta;
+      }
+
+      const key = dayKey(startOfDay(created));
+      if (dailyMap.has(key)) {
+        dailyMap.set(key, (dailyMap.get(key) ?? 0) + delta);
+      }
+
+      const list = entriesByCustomer.get(entry.customerId) ?? [];
+      list.push(entry);
+      entriesByCustomer.set(entry.customerId, list);
+    });
+
+    const dailySeries = recentDays.map((d) => ({ ...d, value: dailyMap.get(d.key) ?? 0 }));
+
+    const topOutstanding = customers
+      .filter((c) => c.balance > 0)
+      .map((customer) => ({ customer, remainingCredit: customer.balance }))
+      .sort((a, b) => b.remainingCredit - a.remainingCredit)
+      ;
+
+    const overdueList = customers
+      .filter((c) => c.balance > 0)
+      .map((customer) => {
+        const entries = (entriesByCustomer.get(customer.id) ?? [])
+          .filter((entry) => entry.createdAt)
+          .sort((a, b) => {
+            const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return at - bt;
+          });
+
+        if (entries.length === 0) {
+          return { customer, daysPastDue: 0 };
+        }
+
+        let runningBalance = 0;
+        let lastSettledIndex = -1;
+        entries.forEach((entry, index) => {
+          runningBalance += entry.type === "credit" ? entry.amount : -entry.amount;
+          if (runningBalance === 0) lastSettledIndex = index;
+        });
+
+        const agingStartEntry = lastSettledIndex >= 0 ? entries[lastSettledIndex + 1] : entries[0];
+        const agingStartDate = agingStartEntry?.createdAt ? new Date(agingStartEntry.createdAt) : now;
+        const daysPastDue = Math.max(0, Math.floor((now.getTime() - agingStartDate.getTime()) / dayMs));
+
+        return { customer, daysPastDue };
+      })
+      .sort((a, b) => {
+        if (b.daysPastDue !== a.daysPastDue) return b.daysPastDue - a.daysPastDue;
+        return b.customer.balance - a.customer.balance;
+      })
+      .slice(0, 5);
+
+    return { dailySeries, weeklyNet, todayNet, topOutstanding, overdueList };
+  }, [allLedgerEntries, customers]);
+
+  if (loadingCustomers && allLedgerEntries.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-6">
+        <p className="text-[12px] text-text-muted">Loading cashflow analytics…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-[13px] font-semibold text-text-dark">Cashflow Snapshot</h4>
+          <span className="text-[10px] text-text-muted">Last 7 days</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className={`rounded-xl border px-3 py-2.5 ${cashflowAnalytics.todayNet >= 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Today Net</p>
+            <p className={`text-[16px] font-black mt-0.5 ${cashflowAnalytics.todayNet >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
+              {cashflowAnalytics.todayNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.todayNet).toLocaleString()}
+            </p>
+          </div>
+          <div className={`rounded-xl border px-3 py-2.5 ${cashflowAnalytics.weeklyNet >= 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Weekly Net</p>
+            <p className={`text-[16px] font-black mt-0.5 ${cashflowAnalytics.weeklyNet >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
+              {cashflowAnalytics.weeklyNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.weeklyNet).toLocaleString()}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {(() => {
+            const maxAbs = Math.max(1, ...cashflowAnalytics.dailySeries.map((d) => Math.abs(d.value)));
+            return cashflowAnalytics.dailySeries.map((day) => (
+              <div key={day.key} className="flex items-center gap-2">
+                <span className="w-9 text-[11px] text-text-muted">{day.label}</span>
+                <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full ${day.value >= 0 ? "bg-rose-400" : "bg-emerald-400"}`}
+                    style={{ width: `${(Math.abs(day.value) / maxAbs) * 100}%` }}
+                  />
+                </div>
+                <span className={`text-[11px] font-semibold w-20 text-right ${day.value >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  {day.value >= 0 ? "+" : "−"}Rs {Math.abs(day.value).toLocaleString()}
+                </span>
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-[13px] font-semibold text-text-dark">Highest Remaining Credit</h4>
+          <span className="text-[10px] text-text-muted">Outstanding balance</span>
+        </div>
+        {cashflowAnalytics.topOutstanding.length === 0 ? (
+          <p className="text-[12px] text-text-muted">No outstanding credit.</p>
+        ) : (
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {cashflowAnalytics.topOutstanding.map((item) => (
+              <div key={item.customer.id} className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelectCustomer(item.customer.id)}
+                  className="text-[12px] font-semibold text-primary hover:text-primary-dark truncate text-left"
+                  title={`Open ${item.customer.name} ledger`}
+                >
+                  {item.customer.name}
+                </button>
+                <span className="text-[12px] font-bold text-rose-600">
+                  Rs {item.remainingCredit.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-[13px] font-semibold text-text-dark">Most Overdue</h4>
+          <span className="text-[10px] text-text-muted">Days since last settle</span>
+        </div>
+        {cashflowAnalytics.overdueList.length === 0 ? (
+          <p className="text-[12px] text-text-muted">No overdue customers.</p>
+        ) : (
+          <div className="space-y-2">
+              {cashflowAnalytics.overdueList.map(({ customer, daysPastDue }) => (
+              <div key={customer.id} className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => onSelectCustomer(customer.id)}
+                      className="text-[12px] font-semibold text-primary hover:text-primary-dark truncate text-left"
+                      title={`Open ${customer.name} ledger`}
+                    >
+                      {customer.name}
+                    </button>
+                  <p className="text-[10px] text-text-muted">{daysPastDue} days</p>
+                </div>
+                <span className="text-[12px] font-bold text-rose-600">Rs {customer.balance.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomerLedgerView({
+  showAddCustomer,
+  setShowAddCustomer,
+  preselectCustomerId,
+  onPreselectComplete,
+}: {
+  showAddCustomer: boolean;
+  setShowAddCustomer: (v: boolean) => void;
+  preselectCustomerId?: string | null;
+  onPreselectComplete?: () => void;
+}) {
   const [customers, setCustomers] = useState<api.Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<api.Customer | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [balanceMin, setBalanceMin] = useState("");
+  const [balanceMax, setBalanceMax] = useState("");
+  const [lastPaymentDays, setLastPaymentDays] = useState("");
+  const [areaQuery, setAreaQuery] = useState("");
+  const [tagQuery, setTagQuery] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [savedFilters, setSavedFilters] = useState<Array<{
+    name: string;
+    balanceMin: string;
+    balanceMax: string;
+    lastPaymentDays: string;
+    areaQuery: string;
+    tagQuery: string;
+  }>>([]);
 
   // Search input ref for auto-focus
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Add customer form
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" });
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "", tags: "" });
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [addCustomerError, setAddCustomerError] = useState("");
 
   // Edit customer form
   const [showEditCustomer, setShowEditCustomer] = useState(false);
-  const [editCustomer, setEditCustomer] = useState({ name: "", phone: "", address: "" });
+  const [editCustomer, setEditCustomer] = useState({ name: "", phone: "", address: "", tags: "" });
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [editCustomerError, setEditCustomerError] = useState("");
   const [deletingCustomer, setDeletingCustomer] = useState(false);
@@ -776,6 +1040,15 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!preselectCustomerId || customers.length === 0) return;
+    const target = customers.find((c) => c.id === preselectCustomerId);
+    if (target) {
+      setSelectedCustomer(target);
+      onPreselectComplete?.();
+    }
+  }, [preselectCustomerId, customers, onPreselectComplete]);
+
   // Keep selectedCustomer in sync with live balance updates
   useEffect(() => {
     if (!selectedCustomer) return;
@@ -786,6 +1059,7 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
         name: updated.name,
         phone: updated.phone ?? "",
         address: updated.address ?? "",
+        tags: updated.tags?.join(", ") ?? "",
       });
     } else {
       setSelectedCustomer(null);
@@ -838,8 +1112,17 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
     if (!newCustomer.name.trim()) { setAddCustomerError("Name is required."); return; }
     setAddingCustomer(true);
     try {
-      const createdCustomer = await api.addCustomer(newCustomer);
-      setNewCustomer({ name: "", phone: "", address: "" });
+      const tags = newCustomer.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const createdCustomer = await api.addCustomer({
+        name: newCustomer.name,
+        phone: newCustomer.phone,
+        address: newCustomer.address,
+        tags,
+      });
+      setNewCustomer({ name: "", phone: "", address: "", tags: "" });
       setShowAddCustomer(false);
       setSelectedCustomer(createdCustomer);
     } catch (err) {
@@ -885,6 +1168,7 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
       name: selectedCustomer.name,
       phone: selectedCustomer.phone ?? "",
       address: selectedCustomer.address ?? "",
+      tags: selectedCustomer.tags?.join(", ") ?? "",
     });
     setEditCustomerError("");
     setShowEditCustomer(true);
@@ -900,10 +1184,15 @@ function CustomerLedgerView({ showAddCustomer, setShowAddCustomer }: { showAddCu
     }
     setEditingCustomer(true);
     try {
+      const tags = editCustomer.tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
       await api.updateCustomer(selectedCustomer.id, {
         name: editCustomer.name.trim(),
         phone: editCustomer.phone.trim(),
         address: editCustomer.address.trim(),
+        tags,
       });
       setShowEditCustomer(false);
     } catch (err) {
@@ -1091,13 +1380,58 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
     setTimeout(() => { win.print(); win.close(); }, 600);
   }
 
+  const lastDebitByCustomer = useMemo(() => {
+    const map = new Map<string, Date>();
+    allLedgerEntries.forEach((entry) => {
+      if (entry.type !== "debit" || !entry.createdAt) return;
+      const date = new Date(entry.createdAt);
+      const prev = map.get(entry.customerId);
+      if (!prev || date > prev) map.set(entry.customerId, date);
+    });
+    return map;
+  }, [allLedgerEntries]);
+
   const filteredCustomers = (customerSearch
     ? customers.filter(
         (c) =>
           c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
           (c.phone ?? "").includes(customerSearch)
       )
-    : customers).sort((a, b) => {
+    : customers)
+    .filter((c) => {
+      const min = balanceMin ? parseFloat(balanceMin) : null;
+      const max = balanceMax ? parseFloat(balanceMax) : null;
+      if (min !== null && !Number.isNaN(min) && c.balance < min) return false;
+      if (max !== null && !Number.isNaN(max) && c.balance > max) return false;
+
+      if (areaQuery.trim()) {
+        const q = areaQuery.toLowerCase();
+        const address = (c.address ?? "").toLowerCase();
+        if (!address.includes(q)) return false;
+      }
+
+      if (tagQuery.trim()) {
+        const tags = (c.tags ?? []).map((t) => t.toLowerCase());
+        const wanted = tagQuery
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean);
+        if (wanted.length > 0 && !wanted.every((t) => tags.includes(t))) return false;
+      }
+
+      if (lastPaymentDays.trim()) {
+        const days = parseInt(lastPaymentDays, 10);
+        if (!Number.isNaN(days)) {
+          const last = lastDebitByCustomer.get(c.id);
+          if (!last) return false;
+          const diffDays = Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays > days) return false;
+        }
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
       // Customers with balance > 0 or < 0 first, settled (balance === 0) at the end
       if (a.balance === 0 && b.balance !== 0) return 1;
       if (a.balance !== 0 && b.balance === 0) return -1;
@@ -1129,6 +1463,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
         amount: entry.amount,
       };
     });
+
 
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
@@ -1205,6 +1540,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             <input required value={newCustomer.name} onChange={(e) => setNewCustomer((v) => ({ ...v, name: e.target.value }))} placeholder="Customer Name *" className={inputCls} />
             <input value={newCustomer.phone} onChange={(e) => setNewCustomer((v) => ({ ...v, phone: e.target.value }))} placeholder="Phone (optional)" className={inputCls} />
             <input value={newCustomer.address} onChange={(e) => setNewCustomer((v) => ({ ...v, address: e.target.value }))} placeholder="Address (optional)" className={inputCls} />
+            <input value={newCustomer.tags} onChange={(e) => setNewCustomer((v) => ({ ...v, tags: e.target.value }))} placeholder="Tags (comma separated)" className={inputCls} />
             <button type="submit" disabled={addingCustomer} className="w-full py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
               {addingCustomer && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
               {addingCustomer ? "Saving…" : "Save Customer"}
@@ -1212,8 +1548,8 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
           </form>
         )}
 
-        {/* Search */}
-        <div className="relative">
+        {/* Search + Advanced Filters Toggle */}
+        <div className="relative flex items-center gap-2">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
@@ -1223,9 +1559,132 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             value={customerSearch}
             onChange={(e) => setCustomerSearch(e.target.value)}
             placeholder="Search by name or phone…"
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+            className="w-full pl-9 pr-10 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
           />
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters((v) => !v)}
+            className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 inline-flex items-center justify-center rounded-lg border transition-colors ${
+              showAdvancedFilters
+                ? "bg-primary/10 border-primary/30 text-primary"
+                : "bg-white border-border-soft text-text-muted hover:text-text-dark"
+            }`}
+            title="Toggle advanced filters"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6.75 9h10.5M9 13.5h6M10.5 18h3" />
+            </svg>
+          </button>
         </div>
+
+        {/* Advanced Filters */}
+        {showAdvancedFilters && (
+        <div className="bg-white border border-border-soft rounded-2xl p-4 space-y-3 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-[12px] font-semibold text-text-dark">Advanced Filters</h4>
+            <button
+              type="button"
+              onClick={() => {
+                const name = window.prompt("Save filter as:");
+                if (!name) return;
+                setSavedFilters((prev) => [
+                  ...prev,
+                  { name, balanceMin, balanceMax, lastPaymentDays, areaQuery, tagQuery },
+                ]);
+                setShowAdvancedFilters(false);
+              }}
+              className="text-[11px] font-semibold text-primary hover:text-primary-dark"
+            >
+              Save
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                min="0"
+                value={balanceMin}
+                onChange={(e) => setBalanceMin(e.target.value)}
+                placeholder="Min balance"
+                className={inputCls}
+              />
+              <input
+                type="number"
+                min="0"
+                value={balanceMax}
+                onChange={(e) => setBalanceMax(e.target.value)}
+                placeholder="Max balance"
+                className={inputCls}
+              />
+            </div>
+            <input
+              type="number"
+              min="0"
+              value={lastPaymentDays}
+              onChange={(e) => setLastPaymentDays(e.target.value)}
+              placeholder="Last payment within (days)"
+              className={inputCls}
+            />
+            <input
+              value={areaQuery}
+              onChange={(e) => setAreaQuery(e.target.value)}
+              placeholder="City / Area"
+              className={inputCls}
+            />
+            <input
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+              placeholder="Tags (comma separated)"
+              className={inputCls}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBalanceMin("");
+                  setBalanceMax("");
+                  setLastPaymentDays("");
+                  setAreaQuery("");
+                  setTagQuery("");
+                  setShowAdvancedFilters(false);
+                }}
+                className="text-[11px] font-semibold text-text-muted hover:text-text-dark"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters(false)}
+                className="text-[11px] font-semibold text-primary hover:text-primary-dark"
+              >
+                Apply
+              </button>
+              <span className="text-[10px] text-text-muted">{filteredCustomers.length} matches</span>
+            </div>
+          </div>
+          {savedFilters.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-border-soft">
+              {savedFilters.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => {
+                    setBalanceMin(preset.balanceMin);
+                    setBalanceMax(preset.balanceMax);
+                    setLastPaymentDays(preset.lastPaymentDays);
+                    setAreaQuery(preset.areaQuery);
+                    setTagQuery(preset.tagQuery);
+                    setShowAdvancedFilters(false);
+                  }}
+                  className="px-2.5 py-1 rounded-full text-[10px] font-bold border border-border-soft bg-bg hover:bg-white"
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
 
         {/* Customer List */}
         <div className="space-y-1.5 max-h-[280px] lg:max-h-[620px] overflow-y-auto pr-1">
@@ -1367,6 +1826,12 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                   value={editCustomer.address}
                   onChange={(e) => setEditCustomer((v) => ({ ...v, address: e.target.value }))}
                   placeholder="Address"
+                  className={inputCls}
+                />
+                <input
+                  value={editCustomer.tags}
+                  onChange={(e) => setEditCustomer((v) => ({ ...v, tags: e.target.value }))}
+                  placeholder="Tags (comma separated)"
                   className={inputCls}
                 />
               </div>
@@ -3496,7 +3961,8 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees">("customers");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees" | "cashflow">("customers");
+  const [preselectCustomerId, setPreselectCustomerId] = useState<string | null>(null);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -3698,6 +4164,21 @@ export default function AdminPage() {
             </span>
           </button>
         <button
+          onClick={() => setActiveTab("cashflow")}
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
+            activeTab === "cashflow"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7.5 15.75l3-3 3 2.25 4.5-4.5" />
+            </svg>
+            Cashflow Analytics
+          </span>
+        </button>
+        <button
           onClick={() => setActiveTab("employees")}
           className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "employees"
@@ -3772,7 +4253,23 @@ export default function AdminPage() {
 
       {/* ── Customer Ledger ── */}
       {activeTab === "customers" && (
-        <CustomerLedgerView showAddCustomer={showAddCustomer} setShowAddCustomer={setShowAddCustomer} />
+        <CustomerLedgerView
+          showAddCustomer={showAddCustomer}
+          setShowAddCustomer={setShowAddCustomer}
+          preselectCustomerId={preselectCustomerId}
+          onPreselectComplete={() => setPreselectCustomerId(null)}
+        />
+      )}
+
+      {/* ── Cashflow Analytics ── */}
+      {activeTab === "cashflow" && (
+        <CashflowAnalyticsView
+          onSelectCustomer={(customerId) => {
+            setActiveTab("customers");
+            setShowAddCustomer(false);
+            setPreselectCustomerId(customerId);
+          }}
+        />
       )}
 
       {/* ── Employee Ledger ── */}

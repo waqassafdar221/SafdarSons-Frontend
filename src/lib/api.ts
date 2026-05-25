@@ -474,6 +474,7 @@ export interface Customer {
   name: string;
   phone?: string;
   address?: string;
+  tags?: string[];
   /** Positive = customer owes us. Negative = we owe customer. */
   balance: number;
   createdAt?: string;
@@ -483,6 +484,7 @@ export interface CustomerCreate {
   name: string;
   phone?: string;
   address?: string;
+  tags?: string[];
 }
 
 export interface LedgerEntry {
@@ -515,6 +517,7 @@ function docToCustomer(id: string, data: Record<string, unknown>): Customer {
     name:      (data.name    as string) ?? "",
     phone:     (data.phone   as string) ?? undefined,
     address:   (data.address as string) ?? undefined,
+    tags:      Array.isArray(data.tags) ? (data.tags as string[]) : undefined,
     balance:   (data.balance as number) ?? 0,
     createdAt: tsToString(data.createdAt),
   };
@@ -544,6 +547,7 @@ function docToLedgerEntry(id: string, data: Record<string, unknown>): LedgerEntr
 export async function addCustomer(data: CustomerCreate): Promise<Customer> {
   const ref = await addDoc(collection(db, CUSTOMERS_COLLECTION), {
     ...data,
+    tags: data.tags ?? [],
     balance: 0,
     createdAt: serverTimestamp(),
   });
@@ -559,6 +563,7 @@ export async function updateCustomer(
   if (data.name !== undefined) payload.name = data.name;
   if (data.phone !== undefined) payload.phone = data.phone || null;
   if (data.address !== undefined) payload.address = data.address || null;
+  if (data.tags !== undefined) payload.tags = data.tags;
   await updateDoc(doc(db, CUSTOMERS_COLLECTION, id), payload);
 }
 
