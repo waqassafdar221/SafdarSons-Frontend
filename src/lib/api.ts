@@ -119,6 +119,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   return stats;
 }
 
+/** Compute dashboard stats from an already-fetched list of requests (no Firestore read). */
+export function computeStats(requests: MedicineRequest[]): DashboardStats {
+  const stats: DashboardStats = { total: 0, pending: 0, arrived: 0, notified: 0, collected: 0, cancelled: 0 };
+  for (const r of requests) {
+    stats.total++;
+    if (r.status in stats) (stats as unknown as Record<string, number>)[r.status]++;
+  }
+  return stats;
+}
+
 // ─── Requests ────────────────────────────────────────────────────────────────
 export type RequestStatus =
   | "pending"
@@ -963,6 +973,228 @@ export function subscribeToEmployeeLedgerEntries(
   return onSnapshot(q, (snap) => {
     const entries = snap.docs
       .map((d) => docToEmployeeLedgerEntry(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(entries);
+  });
+}
+
+// ─── Supplier Ledger ────────────────────────────────────────────────────────────
+const SUPPLIERS_COLLECTION = "suppliers";
+const SUPPLIER_LEDGER_COLLECTION = "supplierLedgerEntries";
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  /** Running balance: credit increases (amount owed to supplier), debit decreases (returns/adjustments). */
+  balance: number;
+  createdAt?: string;
+}
+
+export interface SupplierCreate {
+  name: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface SupplierLedgerEntry {
+  id: string;
+  supplierId: string;
+  type: LedgerEntryType; // "credit" = amount owed to supplier, "debit" = returns/adjustments
+  amount: number;
+  note?: string;
+  createdAt?: string;
+  lastEditedAmount?: number;
+  lastEditedAt?: string;
+  lastEditedBy?: string;
+}
+
+export interface SupplierLedgerEntryCreate {
+  supplierId: string;
+  type: LedgerEntryType;
+  amount: number;
+  note?: string;
+}
+
+function docToSupplier(id: string, d: Record<string, unknown>): Supplier {
+  return {
+    id,
+    name: (d.name as string) ?? "",
+    phone: (d.phone as string | undefined) ?? undefined,
+    address: (d.address as string | undefined) ?? undefined,
+    balance: (d.balance as number) ?? 0,
+    createdAt: d.createdAt
+      ? typeof d.createdAt === "string"
+        ? d.createdAt
+        : new Date((d.createdAt as Timestamp).toDate()).toISOString()
+      : undefined,
+  };
+}
+
+function docToSupplierLedgerEntry(id: string, d: Record<string, unknown>): SupplierLedgerEntry {
+  return {
+    id,
+    supplierId: (d.supplierId as string) ?? "",
+    type: (d.type as LedgerEntryType) ?? "debit",
+    amount: (d.amount as number) ?? 0,
+    note: (d.note as string | undefined) ?? undefined,
+    createdAt: d.createdAt
+      ? typeof d.createdAt === "string"
+        ? d.createdAt
+        : new Date((d.createdAt as Timestamp).toDate()).toISOString()
+      : undefined,
+    lastEditedAmount: (d.lastEditedAmount as number | undefined) ?? undefined,
+    lastEditedAt: d.lastEditedAt
+      ? typeof d.lastEditedAt === "string"
+        ? d.lastEditedAt
+        : new Date((d.lastEditedAt as Timestamp).toDate()).toISOString()
+      : undefined,
+    lastEditedBy: (d.lastEditedBy as string | undefined) ?? undefined,
+  };
+}
+
+/**
+ * Creates a new supplier with an initial balance of 0.
+ */
+export async function addSupplier(data: SupplierCreate): Promise<string> {
+  const doc_ref = await addDoc(collection(db, SUPPLIERS_COLLECTION), {
+    name: data.name,
+    phone: data.phone || null,
+    address: data.address || null,
+    balance: 0,
+    createdAt: serverTimestamp(),
+  });
+  return doc_ref.id;
+}
+
+/**
+ * Updates supplier details (name, phone, address).
+ */
+export async function updateSupplier(id: string, data: Partial<SupplierCreate>): Promise<void> {
+  await updateDoc(doc(db, SUPPLIERS_COLLECTION, id), {
+    ...(data.name !== undefined && { name: data.name }),
+    ...(data.phone !== undefined && { phone: data.phone || null }),
+    ...(data.address !== undefined && { address: data.address || null }),
+  });
+}
+
+/**
+ * Deletes a supplier and all associated ledger entries.
+ */
+export async function deleteSupplier(id: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const suppRef = doc(db, SUPPLIERS_COLLECTION, id);
+    tx.delete(suppRef);
+    const ledgerSnap = await getDocs(
+      query(collection(db, SUPPLIER_LEDGER_COLLECTION), where("supplierId", "==", id))
+    );
+    ledgerSnap.docs.forEach((d) => tx.delete(d.ref));
+  });
+}
+
+/**
+ * Subscribes to all suppliers and calls onChange whenever the list changes.
+ */
+export function subscribeToSuppliers(onChange: (suppliers: Supplier[]) => void): () => void {
+  return onSnapshot(collection(db, SUPPLIERS_COLLECTION), (snap) => {
+    const suppliers = snap.docs
+      .map((d) => docToSupplier(d.id, d.data() as Record<string, unknown>))
+      .sort((a, b) => {
+        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bt - at;
+      });
+    onChange(suppliers);
+  });
+}
+
+/**
+ * Atomically adds a supplier ledger entry and updates the supplier balance.
+ */
+export async function addSupplierLedgerEntry(data: SupplierLedgerEntryCreate): Promise<string> {
+  let entryId = "";
+  await runTransaction(db, async (tx) => {
+    const suppRef = doc(db, SUPPLIERS_COLLECTION, data.supplierId);
+    const suppSnap = await tx.get(suppRef);
+    if (!suppSnap.exists()) throw new Error("Supplier not found.");
+
+    const suppData = suppSnap.data() as Record<string, unknown>;
+    const currentBalance = (suppData.balance as number) ?? 0;
+    const delta = data.type === "credit" ? data.amount : -data.amount;
+    const newBalance = currentBalance + delta;
+
+    const ledgerRef = await addDoc(collection(db, SUPPLIER_LEDGER_COLLECTION), {
+      supplierId: data.supplierId,
+      type: data.type,
+      amount: data.amount,
+      note: data.note || null,
+      createdAt: serverTimestamp(),
+    });
+    entryId = ledgerRef.id;
+
+    tx.update(suppRef, { balance: newBalance });
+  });
+  return entryId;
+}
+
+/**
+ * Atomically updates a supplier ledger entry and adjusts the supplier balance by the delta.
+ */
+export async function updateSupplierLedgerEntry(
+  id: string,
+  data: SupplierLedgerEntryCreate
+): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const ledgerRef = doc(db, SUPPLIER_LEDGER_COLLECTION, id);
+    const ledgerSnap = await tx.get(ledgerRef);
+    if (!ledgerSnap.exists()) throw new Error("Supplier ledger entry not found.");
+
+    const existing = docToSupplierLedgerEntry(
+      ledgerSnap.id,
+      ledgerSnap.data() as Record<string, unknown>
+    );
+
+    const suppRef = doc(db, SUPPLIERS_COLLECTION, data.supplierId);
+    const suppSnap = await tx.get(suppRef);
+    if (!suppSnap.exists()) throw new Error("Supplier not found.");
+
+    const suppData = suppSnap.data() as Record<string, unknown>;
+    const currentBalance = (suppData.balance as number) ?? 0;
+    const oldDelta = existing.type === "credit" ? existing.amount : -existing.amount;
+    const newDelta = data.type === "credit" ? data.amount : -data.amount;
+    const newBalance = currentBalance + newDelta - oldDelta;
+
+    tx.update(suppRef, { balance: newBalance });
+
+    const payload: Record<string, unknown> = {
+      type: data.type,
+      amount: data.amount,
+      note: data.note || null,
+      lastEditedAmount: existing.amount,
+      lastEditedAt: serverTimestamp(),
+      lastEditedBy: auth.currentUser?.email ?? null,
+    };
+
+    tx.update(ledgerRef, payload);
+  });
+}
+
+export function subscribeToSupplierLedgerEntries(
+  supplierId: string,
+  onChange: (entries: SupplierLedgerEntry[]) => void
+): () => void {
+  const q = query(
+    collection(db, SUPPLIER_LEDGER_COLLECTION),
+    where("supplierId", "==", supplierId)
+  );
+  return onSnapshot(q, (snap) => {
+    const entries = snap.docs
+      .map((d) => docToSupplierLedgerEntry(d.id, d.data() as Record<string, unknown>))
       .sort((a, b) => {
         const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;

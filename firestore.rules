@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /medicineRequests/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /supplierSchedules/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /customers/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /ledgerEntries/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /employees/{employeeId} {
+      allow read, write: if request.auth != null;
+    }
+    match /employeeLedgerEntries/{entryId} {
+      allow read, write: if request.auth != null;
+    }
+    match /suppliers/{supplierId} {
+      allow read, write: if request.auth != null;
+    }
+    match /supplierLedgerEntries/{entryId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

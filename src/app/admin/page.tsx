@@ -711,10 +711,9 @@ function OrderSummaryView({
 }
 
 // ─── Customer Ledger View ────────────────────────────────────────────────────
-function CashflowAnalyticsView({ onSelectCustomer }: { onSelectCustomer: (customerId: string) => void }) {
+function CashflowAnalyticsView({ onSelectCustomer, allLedgerEntries }: { onSelectCustomer: (customerId: string) => void; allLedgerEntries: api.LedgerEntry[] }) {
   const [customers, setCustomers] = useState<api.Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
-  const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
 
   useEffect(() => {
     const unsub = api.subscribeToCustomers((data) => {
@@ -722,29 +721,6 @@ function CashflowAnalyticsView({ onSelectCustomer }: { onSelectCustomer: (custom
       setLoadingCustomers(false);
     });
     return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOnce() {
-      try {
-        const entries = await api.getAllLedgerEntriesOnce();
-        if (!cancelled) {
-          setAllLedgerEntries(entries);
-        }
-      } catch (e) {
-        console.error("Failed to load ledger entries for analytics", e);
-      }
-    }
-
-    loadOnce();
-    const intervalId = setInterval(loadOnce, 30 * 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
   }, []);
 
   const cashflowAnalytics = useMemo(() => {
@@ -956,11 +932,13 @@ function CustomerLedgerView({
   setShowAddCustomer,
   preselectCustomerId,
   onPreselectComplete,
+  allLedgerEntries,
 }: {
   showAddCustomer: boolean;
   setShowAddCustomer: (v: boolean) => void;
   preselectCustomerId?: string | null;
   onPreselectComplete?: () => void;
+  allLedgerEntries: api.LedgerEntry[];
 }) {
   const [customers, setCustomers] = useState<api.Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
@@ -999,7 +977,6 @@ function CustomerLedgerView({
   // Ledger entries
   const [entries, setEntries] = useState<api.LedgerEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
-  const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
 
   // Add transaction form
@@ -1079,32 +1056,6 @@ function CustomerLedgerView({
     return () => unsub();
   }, [selectedCustomer?.id]);
 
-  // Poll all customer ledger entries for global daily reminder ticker (every 30 minutes)
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOnce() {
-      try {
-        const entries = await api.getAllLedgerEntriesOnce();
-        if (!cancelled) {
-          setAllLedgerEntries(entries);
-        }
-      } catch (e) {
-        console.error("Failed to load ledger entries for ticker", e);
-      }
-    }
-
-    // initial load
-    loadOnce();
-
-    // poll every 30 minutes
-    const intervalId = setInterval(loadOnce, 30 * 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  }, []);
 
   async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
@@ -1447,66 +1398,10 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
     .filter((entry) => entry.type === "credit")
     .reduce((sum, entry) => sum + entry.amount, 0);
 
-  const todayLedgerTickerItems = allLedgerEntries
-    .filter((entry) => entry.createdAt && isSameLocalDay(entry.createdAt))
-    .sort((a, b) => {
-      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return at - bt;
-    })
-    .map((entry) => {
-      const customerName = customers.find((c) => c.id === entry.customerId)?.name ?? "Unknown Customer";
-      return {
-        customerId: entry.customerId,
-        customerName,
-        type: entry.type,
-        amount: entry.amount,
-      };
-    });
-
-
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
   return (
     <div className="space-y-4">
-      {todayLedgerTickerItems.length > 0 && (
-        <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-50 to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-50 to-transparent" />
-
-          <div className="overflow-hidden py-2">
-            <div
-              className="flex w-max items-center whitespace-nowrap text-[12px] font-semibold"
-              style={{ animation: "customer-ledger-ticker-loop 60s linear infinite" }}
-            >
-              {[0, 1].map((loop) => (
-                <span key={loop} className="inline-flex items-center px-4" aria-hidden={loop === 1}>
-                  {todayLedgerTickerItems.map((item, idx) => (
-                    <span key={`${loop}-${item.customerId}-${item.type}-${item.amount}-${idx}`} className="inline-flex items-center">
-                      <button
-                        type="button"
-                        tabIndex={loop === 1 ? -1 : 0}
-                        onClick={() => {
-                          const targetCustomer = customers.find((c) => c.id === item.customerId);
-                          if (targetCustomer) setSelectedCustomer(targetCustomer);
-                        }}
-                        className={`transition-all cursor-pointer ${item.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
-                        title={`Open ${item.customerName} ledger`}
-                      >
-                        {item.customerName} {item.type === "credit" ? "Credit" : "Debit"}: {item.type === "credit" ? "+" : "−"}Rs {item.amount.toLocaleString()}
-                      </button>
-                      {idx < todayLedgerTickerItems.length - 1 && (
-                        <span className="mx-3 text-slate-300">•</span>
-                      )}
-                    </span>
-                  ))}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
 
       {/* ── Left: Customer List ── */}
@@ -2243,11 +2138,6 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
       </div>
 
       <style jsx>{`
-        @keyframes customer-ledger-ticker-loop {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-
         @keyframes ledger-details-open {
           0% {
             opacity: 0;
@@ -3951,6 +3841,566 @@ function WeeklyScheduleView() {
   );
 }
 
+// ─── Supplier Ledger View ───────────────────────────────────────────────────────
+function SupplierLedgerView() {
+  const [suppliers, setSuppliers] = useState<api.Supplier[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [selectedSupplier, setSelectedSupplier] = useState<api.Supplier | null>(null);
+  const [supplierSearch, setSupplierSearch] = useState("");
+
+  // Add supplier
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({ name: "", phone: "", address: "" });
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [addSupplierError, setAddSupplierError] = useState("");
+
+  // Edit supplier
+  const [showEditSupplier, setShowEditSupplier] = useState(false);
+  const [editSupplier, setEditSupplier] = useState({ name: "", phone: "", address: "" });
+  const [editingSupplier, setEditingSupplier] = useState(false);
+  const [editSupplierError, setEditSupplierError] = useState("");
+
+  // Delete supplier
+  const [showDeleteSupplier, setShowDeleteSupplier] = useState(false);
+  const [deleteSupplierPwd, setDeleteSupplierPwd] = useState("");
+  const [deletingSupplier, setDeletingSupplier] = useState(false);
+  const [deleteSupplierError, setDeleteSupplierError] = useState("");
+
+  // Ledger entries
+  const [entries, setEntries] = useState<api.SupplierLedgerEntry[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Add transaction
+  const [entryType, setEntryType] = useState<api.LedgerEntryType>("credit");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entryNote, setEntryNote] = useState("");
+  const [addingEntry, setAddingEntry] = useState(false);
+  const [addEntryError, setAddEntryError] = useState("");
+
+  // Edit transaction
+  const [editEntryTarget, setEditEntryTarget] = useState<api.SupplierLedgerEntry | null>(null);
+  const [editEntryForm, setEditEntryForm] = useState<{ type: api.LedgerEntryType; amount: string; note: string; password: string }>({ type: "credit", amount: "", note: "", password: "" });
+  const [editingEntry, setEditingEntry] = useState(false);
+  const [editEntryError, setEditEntryError] = useState("");
+  const [showEditEntryPassword, setShowEditEntryPassword] = useState(false);
+
+  useEffect(() => {
+    const unsub = api.subscribeToSuppliers((data) => { setSuppliers(data); setLoadingSuppliers(false); });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSupplier) return;
+    const updated = suppliers.find((s) => s.id === selectedSupplier.id);
+    if (updated) {
+      setSelectedSupplier(updated);
+      setEditSupplier({ name: updated.name, phone: updated.phone ?? "", address: updated.address ?? "" });
+    } else {
+      setSelectedSupplier(null);
+      setShowEditSupplier(false);
+    }
+  }, [suppliers, selectedSupplier]);
+
+  useEffect(() => {
+    if (!selectedSupplier) return;
+    setLoadingEntries(true);
+    const unsub = api.subscribeToSupplierLedgerEntries(selectedSupplier.id, (data) => { setEntries(data); setLoadingEntries(false); });
+    return () => unsub();
+  }, [selectedSupplier?.id]);
+
+  async function handleAddSupplier(e: React.FormEvent) {
+    e.preventDefault();
+    setAddSupplierError("");
+    if (!newSupplier.name.trim()) { setAddSupplierError("Supplier name is required."); return; }
+    setAddingSupplier(true);
+    try {
+      await api.addSupplier({ name: newSupplier.name.trim(), phone: newSupplier.phone.trim(), address: newSupplier.address.trim() });
+      setNewSupplier({ name: "", phone: "", address: "" });
+      setShowAddSupplier(false);
+    } catch (err) { setAddSupplierError(err instanceof Error ? err.message : "Failed"); }
+    finally { setAddingSupplier(false); }
+  }
+
+  function openEditSupplier() {
+    if (!selectedSupplier) return;
+    setEditSupplier({ name: selectedSupplier.name, phone: selectedSupplier.phone ?? "", address: selectedSupplier.address ?? "" });
+    setEditSupplierError("");
+    setShowEditSupplier(true);
+  }
+
+  async function handleEditSupplier(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSupplier) return;
+    setEditSupplierError("");
+    if (!editSupplier.name.trim()) { setEditSupplierError("Supplier name is required."); return; }
+    setEditingSupplier(true);
+    try {
+      await api.updateSupplier(selectedSupplier.id, { name: editSupplier.name.trim(), phone: editSupplier.phone.trim(), address: editSupplier.address.trim() });
+      setShowEditSupplier(false);
+    } catch (err) { setEditSupplierError(err instanceof Error ? err.message : "Failed"); }
+    finally { setEditingSupplier(false); }
+  }
+
+  async function handleDeleteSupplier(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSupplier) return;
+    setDeleteSupplierError("");
+    setDeletingSupplier(true);
+    try {
+      await api.reauthenticate(deleteSupplierPwd);
+      await api.deleteSupplier(selectedSupplier.id);
+      setSelectedSupplier(null);
+      setEntries([]);
+      setShowDeleteSupplier(false);
+      setDeleteSupplierPwd("");
+    } catch (err) { setDeleteSupplierError(err instanceof Error ? err.message : "Failed"); }
+    finally { setDeletingSupplier(false); }
+  }
+
+  async function handleAddEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSupplier) return;
+    setAddEntryError("");
+    const amountNum = parseFloat(entryAmount);
+    if (!entryAmount || isNaN(amountNum) || amountNum <= 0) { setAddEntryError("Enter a valid amount."); return; }
+    setAddingEntry(true);
+    try {
+      await api.addSupplierLedgerEntry({ supplierId: selectedSupplier.id, type: entryType, amount: amountNum, note: entryNote.trim() });
+      setEntryAmount("");
+      setEntryNote("");
+      setEntryType("credit");
+    } catch (err) { setAddEntryError(err instanceof Error ? err.message : "Failed"); }
+    finally { setAddingEntry(false); }
+  }
+
+  async function handleEditEntry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSupplier || !editEntryTarget) return;
+    setEditEntryError("");
+    const amountNum = parseFloat(editEntryForm.amount);
+    if (!editEntryForm.amount || isNaN(amountNum) || amountNum <= 0) { setEditEntryError("Enter a valid amount."); return; }
+    setEditingEntry(true);
+    try {
+      await api.reauthenticate(editEntryForm.password);
+      await api.updateSupplierLedgerEntry(editEntryTarget.id, { supplierId: selectedSupplier.id, type: editEntryForm.type, amount: amountNum, note: editEntryForm.note.trim() });
+      setEditEntryTarget(null);
+      setShowEditEntryPassword(false);
+    } catch (err) { setEditEntryError(err instanceof Error ? err.message : "Failed"); }
+    finally { setEditingEntry(false); }
+  }
+
+  function openEditEntry(entry: api.SupplierLedgerEntry) {
+    setEditEntryTarget(entry);
+    setEditEntryForm({ type: entry.type, amount: String(entry.amount), note: entry.note ?? "", password: "" });
+    setEditEntryError("");
+    setShowEditEntryPassword(true);
+  }
+
+  const filteredSuppliers = suppliers.filter((s) => s.name.toLowerCase().includes(supplierSearch.toLowerCase()));
+  const totalOwed = suppliers.reduce((sum, s) => sum + (s.balance > 0 ? s.balance : 0), 0);
+  const totalPurchased = entries.filter((e) => e.type === "credit").reduce((s, e) => s + e.amount, 0);
+  const totalReturned  = entries.filter((e) => e.type === "debit").reduce((s, e) => s + e.amount, 0);
+
+  const entriesWithRunning = useMemo(() => {
+    let running = 0;
+    return [...entries].reverse().map((e) => {
+      running += e.type === "credit" ? e.amount : -e.amount;
+      return { ...e, runningBalance: running };
+    }).reverse();
+  }, [entries]);
+
+  const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      {/* ── Left: Supplier List ── */}
+      <div className="lg:col-span-1">
+        <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: "82vh" }}>
+          {/* Header */}
+          <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between sticky top-0 bg-white z-10">
+            <div>
+              <h3 className="text-[14px] font-semibold text-text-dark">Suppliers</h3>
+              {totalOwed > 0 && (
+                <p className="text-[11px] font-semibold text-orange-600 mt-0.5">Total owed: Rs {totalOwed.toLocaleString()}</p>
+              )}
+            </div>
+            <button onClick={() => setShowAddSupplier(true)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="px-4 py-3 border-b border-border-soft bg-bg/50">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+              <input type="text" value={supplierSearch} onChange={(e) => setSupplierSearch(e.target.value)} placeholder="Search suppliers…" className="w-full pl-8 pr-3 py-2 rounded-lg border border-border-soft text-[13px] placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white" />
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto">
+            {loadingSuppliers ? (
+              <div className="space-y-2 p-4">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-14 bg-bg rounded-xl animate-pulse" />)}</div>
+            ) : filteredSuppliers.length === 0 ? (
+              <div className="px-4 py-10 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+                </div>
+                <p className="text-[13px] font-semibold text-text-dark">No suppliers</p>
+                <p className="text-[12px] text-text-muted mt-0.5">{supplierSearch ? "Try a different search" : "Add your first supplier"}</p>
+              </div>
+            ) : (
+              <div className="space-y-1 p-2">
+                {filteredSuppliers.map((supplier) => {
+                  const initials = supplier.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                  const isSelected = selectedSupplier?.id === supplier.id;
+                  return (
+                    <button key={supplier.id} onClick={() => setSelectedSupplier(supplier)}
+                      className={`w-full text-left px-3 py-3 rounded-xl transition-all border ${isSelected ? "bg-primary/10 border-primary/30 shadow-sm" : "border-transparent hover:bg-bg"}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-bold shrink-0 ${isSelected ? "bg-primary text-white" : "bg-slate-100 text-slate-600"}`}>
+                          {initials}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-[13px] font-semibold truncate ${isSelected ? "text-primary" : "text-text-dark"}`}>{supplier.name}</p>
+                          <p className={`text-[11px] font-medium mt-0.5 ${supplier.balance > 0 ? "text-orange-600" : supplier.balance < 0 ? "text-emerald-600" : "text-text-muted"}`}>
+                            {supplier.balance > 0 ? `We owe Rs ${supplier.balance.toLocaleString()}` : supplier.balance < 0 ? `They owe Rs ${Math.abs(supplier.balance).toLocaleString()}` : "Settled"}
+                          </p>
+                        </div>
+                        {supplier.balance !== 0 && (
+                          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${supplier.balance > 0 ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"}`}>
+                            Rs {Math.abs(supplier.balance).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right: Details & Ledger ── */}
+      <div className="lg:col-span-2 space-y-4">
+        {selectedSupplier ? (
+          <>
+            {/* Supplier header card */}
+            <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+              {/* Gradient banner */}
+              <div className={`px-6 py-5 ${selectedSupplier.balance > 0 ? "bg-gradient-to-r from-orange-500 to-orange-600" : selectedSupplier.balance < 0 ? "bg-gradient-to-r from-emerald-500 to-teal-600" : "bg-gradient-to-r from-slate-600 to-slate-700"}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center text-white font-bold text-[14px]">
+                      {selectedSupplier.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-white">{selectedSupplier.name}</h3>
+                      <p className="text-[11px] text-white/70 mt-0.5">
+                        Since {new Date(selectedSupplier.createdAt ?? "").toLocaleDateString("en-PK", { month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={openEditSupplier} className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                  </button>
+                </div>
+                <div className="mt-4">
+                  <p className="text-[11px] font-semibold text-white/70 uppercase tracking-wider">
+                    {selectedSupplier.balance > 0 ? "Amount We Owe" : selectedSupplier.balance < 0 ? "Amount They Owe Us" : "Balance"}
+                  </p>
+                  <p className="text-[30px] font-black text-white mt-0.5">Rs {Math.abs(selectedSupplier.balance).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Contact row */}
+              {(selectedSupplier.phone || selectedSupplier.address) && (
+                <div className="px-6 py-3.5 border-b border-border-soft flex flex-wrap gap-x-6 gap-y-2">
+                  {selectedSupplier.phone && (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>
+                      <a href={`tel:${selectedSupplier.phone}`} className="text-[12px] text-primary hover:underline font-medium">{selectedSupplier.phone}</a>
+                      <a href={`https://wa.me/92${selectedSupplier.phone.replace(/^0/, "")}`} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-600 text-[11px] font-semibold hover:bg-emerald-100 transition-colors">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.558 4.124 1.526 5.855L.057 23.43l5.704-1.497A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.807 9.807 0 01-5.012-1.377l-.36-.214-3.72.976 1-3.634-.233-.374A9.807 9.807 0 012.182 12c0-5.419 4.4-9.818 9.818-9.818 5.419 0 9.818 4.4 9.818 9.818 0 5.419-4.4 9.818-9.818 9.818z"/></svg>
+                        WhatsApp
+                      </a>
+                    </div>
+                  )}
+                  {selectedSupplier.address && (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                      <span className="text-[12px] text-text-muted">{selectedSupplier.address}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Summary stats */}
+              <div className="px-6 py-4 grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Total Purchased</p>
+                  <p className="text-[15px] font-bold text-orange-600 mt-0.5">Rs {totalPurchased.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Total Returns</p>
+                  <p className="text-[15px] font-bold text-emerald-600 mt-0.5">Rs {totalReturned.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Transactions</p>
+                  <p className="text-[15px] font-bold text-text-dark mt-0.5">{entries.length}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Add transaction form */}
+            <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-5">
+              <h4 className="text-[13px] font-semibold text-text-dark mb-4">New Transaction</h4>
+              <form onSubmit={handleAddEntry} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setEntryType("credit")}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-[12px] font-semibold transition-all border-2 ${entryType === "credit" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-border-soft bg-bg text-text-soft hover:border-orange-200 hover:bg-orange-50/40"}`}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
+                    Purchase <span className="text-[10px] opacity-60">(We Owe)</span>
+                  </button>
+                  <button type="button" onClick={() => setEntryType("debit")}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-[12px] font-semibold transition-all border-2 ${entryType === "debit" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-border-soft bg-bg text-text-soft hover:border-emerald-200 hover:bg-emerald-50/40"}`}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                    Return <span className="text-[10px] opacity-60">(They Owe)</span>
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-text-muted pointer-events-none">Rs</span>
+                  <input type="number" value={entryAmount} onChange={(e) => setEntryAmount(e.target.value)} placeholder="0" step="0.01" min="0"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-border-soft text-[13px] placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all" />
+                </div>
+
+                <input type="text" value={entryNote} onChange={(e) => setEntryNote(e.target.value)} placeholder="Note (optional) — e.g., Invoice #123" className={inputCls} />
+
+                {addEntryError && <p className="text-[12px] text-red-600 bg-red-50 px-3 py-2 rounded-lg">{addEntryError}</p>}
+
+                <button type="submit" disabled={addingEntry}
+                  className={`w-full py-2.5 rounded-xl text-white text-[13px] font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${entryType === "credit" ? "bg-orange-500 hover:bg-orange-600 shadow-sm shadow-orange-500/30" : "bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/30"}`}>
+                  {addingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {addingEntry ? "Adding…" : entryType === "credit" ? "Record Purchase" : "Record Return"}
+                </button>
+              </form>
+            </div>
+
+            {/* Transaction history */}
+            {loadingEntries ? (
+              <div className="bg-white rounded-2xl border border-border-soft p-5 space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-14 bg-bg rounded-xl animate-pulse" />)}
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-border-soft p-10 text-center">
+                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-7 h-7 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
+                </div>
+                <p className="text-[13px] font-semibold text-text-dark">No transactions yet</p>
+                <p className="text-[12px] text-text-muted mt-1">Add the first purchase or return above</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between">
+                  <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
+                  <span className="text-[11px] text-text-muted">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="divide-y divide-border-soft">
+                  {entriesWithRunning.map((entry) => (
+                    <div key={entry.id} className="px-5 py-4 flex items-center gap-3 hover:bg-bg/40 transition-colors group">
+                      {/* Type icon */}
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${entry.type === "credit" ? "bg-orange-100" : "bg-emerald-100"}`}>
+                        <svg className={`w-4 h-4 ${entry.type === "credit" ? "text-orange-600" : "text-emerald-600"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          {entry.type === "credit"
+                            ? <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            : <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />}
+                        </svg>
+                      </div>
+
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-lg text-[11px] font-semibold ${entry.type === "credit" ? "bg-orange-50 text-orange-700" : "bg-emerald-50 text-emerald-700"}`}>
+                            {entry.type === "credit" ? "Purchase" : "Return"}
+                          </span>
+                          <span className="text-[14px] font-bold text-text-dark">Rs {entry.amount.toLocaleString()}</span>
+                          {entry.lastEditedAt && <span className="text-[10px] text-text-muted/60 italic">edited</span>}
+                        </div>
+                        {entry.note && <p className="text-[12px] text-text-muted mt-0.5 truncate">{entry.note}</p>}
+                        <p className="text-[11px] text-text-muted/60 mt-0.5">
+                          {new Date(entry.createdAt ?? "").toLocaleString("en-PK", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+
+                      {/* Running balance */}
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted/60">Balance</p>
+                        <p className={`text-[13px] font-bold ${entry.runningBalance > 0 ? "text-orange-600" : entry.runningBalance < 0 ? "text-emerald-600" : "text-text-muted"}`}>
+                          Rs {Math.abs(entry.runningBalance).toLocaleString()}
+                        </p>
+                      </div>
+
+                      {/* Edit */}
+                      <button onClick={() => openEditEntry(entry)} className="ml-1 w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:bg-bg hover:text-text-dark transition-all opacity-0 group-hover:opacity-100 shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="bg-white rounded-2xl border border-border-soft p-16 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+            </div>
+            <p className="text-[15px] font-semibold text-text-dark">Select a supplier</p>
+            <p className="text-[13px] text-text-muted mt-1">Choose from the list to view and manage transactions</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modals ── */}
+
+      {/* Add Supplier */}
+      {showAddSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddSupplier(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div>
+              <h2 className="text-[16px] font-semibold text-text-dark">Add Supplier</h2>
+              <p className="text-[12px] text-text-muted mt-0.5">Create a new supplier entry</p>
+            </div>
+            <form onSubmit={handleAddSupplier} className="space-y-3">
+              <div><label className="text-[12px] font-semibold text-text-muted">Supplier Name *</label><input type="text" value={newSupplier.name} onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })} placeholder="e.g., ABC Pharma" className={`${inputCls} mt-1.5`} autoFocus /></div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Phone (optional)</label><input type="text" value={newSupplier.phone} onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })} placeholder="03001234567" className={`${inputCls} mt-1.5`} /></div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Address (optional)</label><textarea value={newSupplier.address} onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })} placeholder="e.g., Main Road, Lahore" rows={2} className={`${inputCls} mt-1.5 resize-none`} /></div>
+              {addSupplierError && <p className="text-[12px] text-red-600 bg-red-50 px-3 py-2 rounded-lg">{addSupplierError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setShowAddSupplier(false)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={addingSupplier} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
+                  {addingSupplier && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {addingSupplier ? "Adding…" : "Add Supplier"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Supplier */}
+      {showEditSupplier && selectedSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowEditSupplier(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-start justify-between">
+              <div><h2 className="text-[16px] font-semibold text-text-dark">Edit Supplier</h2><p className="text-[12px] text-text-muted mt-0.5">{selectedSupplier.name}</p></div>
+              <button onClick={() => setShowEditSupplier(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg text-text-muted"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <form onSubmit={handleEditSupplier} className="space-y-3">
+              <div><label className="text-[12px] font-semibold text-text-muted">Supplier Name *</label><input type="text" value={editSupplier.name} onChange={(e) => setEditSupplier({ ...editSupplier, name: e.target.value })} className={`${inputCls} mt-1.5`} /></div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Phone</label><input type="text" value={editSupplier.phone} onChange={(e) => setEditSupplier({ ...editSupplier, phone: e.target.value })} className={`${inputCls} mt-1.5`} /></div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Address</label><textarea value={editSupplier.address} onChange={(e) => setEditSupplier({ ...editSupplier, address: e.target.value })} rows={2} className={`${inputCls} mt-1.5 resize-none`} /></div>
+              {editSupplierError && <p className="text-[12px] text-red-600 bg-red-50 px-3 py-2 rounded-lg">{editSupplierError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="submit" disabled={editingSupplier} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
+                  {editingSupplier && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {editingSupplier ? "Saving…" : "Save Changes"}
+                </button>
+                <button type="button" onClick={() => { setShowEditSupplier(false); setDeleteSupplierError(""); setDeleteSupplierPwd(""); setShowDeleteSupplier(true); }}
+                  className="py-2.5 px-4 rounded-xl border border-red-200 bg-red-50 text-red-600 text-[13px] font-semibold hover:bg-red-100 transition-colors">
+                  Delete
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Supplier */}
+      {showDeleteSupplier && selectedSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowDeleteSupplier(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+              </div>
+              <div>
+                <h2 className="text-[15px] font-semibold text-text-dark">Delete Supplier</h2>
+                <p className="text-[12px] text-text-muted mt-0.5">Removes <strong>{selectedSupplier.name}</strong> and all their transactions permanently.</p>
+              </div>
+            </div>
+            <form onSubmit={handleDeleteSupplier} className="space-y-3">
+              <div>
+                <label className="text-[12px] font-semibold text-text-muted">Enter your password to confirm</label>
+                <input type="password" value={deleteSupplierPwd} onChange={(e) => setDeleteSupplierPwd(e.target.value)} placeholder="Your password" className={`${inputCls} mt-1.5`} autoFocus />
+              </div>
+              {deleteSupplierError && <p className="text-[12px] text-red-600 bg-red-50 px-3 py-2 rounded-lg">{deleteSupplierError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setShowDeleteSupplier(false)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={deletingSupplier} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-[13px] font-semibold hover:bg-red-600 disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
+                  {deletingSupplier && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {deletingSupplier ? "Deleting…" : "Delete Supplier"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Entry */}
+      {showEditEntryPassword && editEntryTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowEditEntryPassword(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex items-start justify-between">
+              <div><h2 className="text-[16px] font-semibold text-text-dark">Edit Transaction</h2><p className="text-[12px] text-text-muted mt-0.5">Password required to make changes</p></div>
+              <button onClick={() => setShowEditEntryPassword(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg text-text-muted"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <form onSubmit={handleEditEntry} className="space-y-3">
+              <div>
+                <label className="text-[12px] font-semibold text-text-muted">Type</label>
+                <div className="grid grid-cols-2 gap-2 mt-1.5">
+                  {(["credit", "debit"] as api.LedgerEntryType[]).map((t) => (
+                    <button key={t} type="button" onClick={() => setEditEntryForm({ ...editEntryForm, type: t })}
+                      className={`py-2 px-3 rounded-xl text-[12px] font-semibold border-2 transition-all ${editEntryForm.type === t ? (t === "credit" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-emerald-500 bg-emerald-50 text-emerald-700") : "border-border-soft bg-bg text-text-soft"}`}>
+                      {t === "credit" ? "Purchase" : "Return"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[12px] font-semibold text-text-muted">Amount (Rs) *</label>
+                <div className="relative mt-1.5">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-text-muted pointer-events-none">Rs</span>
+                  <input type="number" value={editEntryForm.amount} onChange={(e) => setEditEntryForm({ ...editEntryForm, amount: e.target.value })} className={`${inputCls} pl-10`} step="0.01" min="0" />
+                </div>
+              </div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Note</label><input type="text" value={editEntryForm.note} onChange={(e) => setEditEntryForm({ ...editEntryForm, note: e.target.value })} className={`${inputCls} mt-1.5`} /></div>
+              <div><label className="text-[12px] font-semibold text-text-muted">Password *</label><input type="password" value={editEntryForm.password} onChange={(e) => setEditEntryForm({ ...editEntryForm, password: e.target.value })} placeholder="Your password" className={`${inputCls} mt-1.5`} /></div>
+              {editEntryError && <p className="text-[12px] text-red-600 bg-red-50 px-3 py-2 rounded-lg">{editEntryError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setShowEditEntryPassword(false)} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                <button type="submit" disabled={editingEntry} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
+                  {editingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                  {editingEntry ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -3961,7 +4411,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees" | "cashflow">("customers");
+  const [activeTab, setActiveTab] = useState<"requests" | "orderSummary" | "weeklySchedule" | "customers" | "employees" | "suppliers" | "cashflow">("customers");
   const [preselectCustomerId, setPreselectCustomerId] = useState<string | null>(null);
 
   // Modals
@@ -3971,9 +4421,46 @@ export default function AdminPage() {
   const [detailRequest, setDetailRequest] = useState<MedicineRequest | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<MedicineRequest | null>(null);
 
+  const [allLedgerEntries, setAllLedgerEntries] = useState<api.LedgerEntry[]>([]);
+
   const searchDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const initialLoadDone = useRef(false);
+  const allRequestsCacheRef = useRef<MedicineRequest[]>([]);
+  const searchRef = useRef(search);
+  const statusFilterRef = useRef(statusFilter);
+
+  useEffect(() => { searchRef.current = search; }, [search]);
+  useEffect(() => { statusFilterRef.current = statusFilter; }, [statusFilter]);
+
+  const filterAndSet = useCallback((allRequests: MedicineRequest[]) => {
+    let filtered = allRequests;
+    const sf = statusFilterRef.current;
+    const s = searchRef.current;
+    if (sf && sf !== "all") {
+      filtered = filtered.filter((r) => r.status === sf);
+    }
+    if (s) {
+      const lower = s.toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          r.customerName.toLowerCase().includes(lower) ||
+          r.medicineName.toLowerCase().includes(lower) ||
+          r.supplierName.toLowerCase().includes(lower) ||
+          r.phone.includes(lower)
+      );
+    }
+    setRequests(filtered);
+    setTotal(filtered.length);
+  }, []);
+
+  // Subscribe to all ledger entries once; survives tab switches
+  useEffect(() => {
+    const unsub = api.subscribeToAllLedgerEntries((entries) => {
+      setAllLedgerEntries(entries);
+    });
+    return () => unsub();
+  }, []);
 
   // ─── Request notification permission on mount ──────────────────────────────
   useEffect(() => {
@@ -3983,6 +4470,8 @@ export default function AdminPage() {
   // ─── Real-time Firestore subscription ──────────────────────────────────────
   useEffect(() => {
     const unsub = api.subscribeToRequests((allRequests) => {
+      allRequestsCacheRef.current = allRequests;
+
       // Detect NEW requests (ones we haven't seen before)
       if (initialLoadDone.current) {
         for (const req of allRequests) {
@@ -4000,33 +4489,21 @@ export default function AdminPage() {
       knownIdsRef.current = new Set(allRequests.map((r) => r.id));
       initialLoadDone.current = true;
 
-      // Apply client-side filters
-      let filtered = allRequests;
-      if (statusFilter && statusFilter !== "all") {
-        filtered = filtered.filter((r) => r.status === statusFilter);
-      }
-      if (search) {
-        const s = search.toLowerCase();
-        filtered = filtered.filter(
-          (r) =>
-            r.customerName.toLowerCase().includes(s) ||
-            r.medicineName.toLowerCase().includes(s) ||
-            r.supplierName.toLowerCase().includes(s) ||
-            r.phone.includes(s)
-        );
-      }
-
-      setRequests(filtered);
-      setTotal(filtered.length);
+      filterAndSet(allRequests);
       setLoading(false);
 
-      // Also refresh stats
-      api.getDashboardStats().then(setStats).catch(() => {});
+      // Compute stats from already-fetched data — no extra Firestore read
+      setStats(api.computeStats(allRequests));
       setStatsLoading(false);
     });
 
     return () => unsub();
-  }, [search, statusFilter]);
+  }, [filterAndSet]);
+
+  // Re-apply filters when search or statusFilter changes without recreating the subscription
+  useEffect(() => {
+    filterAndSet(allRequestsCacheRef.current);
+  }, [search, statusFilter, filterAndSet]);
 
   // ─── Periodic reminder for pending requests (every 30 minutes) ─────────────
   useEffect(() => {
@@ -4048,37 +4525,6 @@ export default function AdminPage() {
     return () => clearInterval(intervalId);
   }, [requests]);
 
-  const loadStats = useCallback(async () => {
-    setStatsLoading(true);
-    try {
-      const s = await api.getDashboardStats();
-      setStats(s);
-    } catch {
-      // ignore
-    } finally {
-      setStatsLoading(false);
-    }
-  }, []);
-
-  const loadRequests = useCallback(async (q?: string, st?: string) => {
-    setLoading(true);
-    try {
-      const res = await api.getRequests(q, st);
-      setRequests(res.requests);
-      setTotal(res.total);
-    } catch {
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Note: initial load + search/filter now handled by the real-time subscription above.
-  // These functions are kept for manual refresh and post-action refreshes.
-
-  // Note: initial load + search/filter are handled by the real-time subscription.
-  // The old useEffect hooks for loadStats/loadRequests and debounced search
-  // have been replaced by the onSnapshot listener above.
 
   async function handleMarkArrived(req: MedicineRequest) {
     setActionLoading(req.id + "-arrived");
@@ -4086,7 +4532,6 @@ export default function AdminPage() {
       const updated = await api.markArrived(req.id);
       setRequests((rs) => rs.map((r) => (r.id === req.id ? updated : r)));
       if (detailRequest?.id === req.id) setDetailRequest(updated);
-      await loadStats();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -4100,7 +4545,6 @@ export default function AdminPage() {
       const updated = await api.markCollected(req.id);
       setRequests((rs) => rs.map((r) => (r.id === req.id ? updated : r)));
       if (detailRequest?.id === req.id) setDetailRequest(updated);
-      await loadStats();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -4109,8 +4553,7 @@ export default function AdminPage() {
   }
 
   function refresh() {
-    loadStats();
-    loadRequests(search, statusFilter === "all" ? undefined : statusFilter);
+    // Real-time listener keeps data current; nothing to do here
   }
 
   function handleDetailAction(
@@ -4209,6 +4652,21 @@ export default function AdminPage() {
           </span>
         </button>
         <button
+          onClick={() => setActiveTab("suppliers")}
+          className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
+            activeTab === "suppliers"
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-text-dark hover:bg-bg-light"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12M8 7a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2V9a2 2 0 00-2-2m0 0V5a2 2 0 00-2-2H10a2 2 0 00-2 2v2m0 0H6a2 2 0 00-2 2v6a2 2 0 002 2h2" />
+            </svg>
+            Supplier Ledger
+          </span>
+        </button>
+        <button
           onClick={() => setActiveTab("requests")}
           className={`px-6 py-4 text-sm font-bold transition-all duration-200 border-b-2 whitespace-nowrap ${
             activeTab === "requests"
@@ -4258,6 +4716,7 @@ export default function AdminPage() {
           setShowAddCustomer={setShowAddCustomer}
           preselectCustomerId={preselectCustomerId}
           onPreselectComplete={() => setPreselectCustomerId(null)}
+          allLedgerEntries={allLedgerEntries}
         />
       )}
 
@@ -4269,12 +4728,18 @@ export default function AdminPage() {
             setShowAddCustomer(false);
             setPreselectCustomerId(customerId);
           }}
+          allLedgerEntries={allLedgerEntries}
         />
       )}
 
       {/* ── Employee Ledger ── */}
       {activeTab === "employees" && (
         <EmployeeLedgerView />
+      )}
+
+      {/* ── Supplier Ledger ── */}
+      {activeTab === "suppliers" && (
+        <SupplierLedgerView />
       )}
 
       {/* ── Requests Table ── */}
