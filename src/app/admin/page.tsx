@@ -819,107 +819,198 @@ function CashflowAnalyticsView({ onSelectCustomer, allLedgerEntries }: { onSelec
 
   if (loadingCustomers && allLedgerEntries.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-6">
-        <p className="text-[12px] text-text-muted">Loading cashflow analytics…</p>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 bg-white rounded-2xl border border-border-soft animate-pulse" />
+          ))}
+        </div>
+        <div className="h-56 bg-white rounded-2xl border border-border-soft animate-pulse" />
       </div>
     );
   }
 
+  const totalOutstanding = cashflowAnalytics.topOutstanding.reduce((s, i) => s + i.remainingCredit, 0);
+  const maxOutstanding = cashflowAnalytics.topOutstanding[0]?.remainingCredit ?? 1;
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-[13px] font-semibold text-text-dark">Cashflow Snapshot</h4>
-          <span className="text-[10px] text-text-muted">Last 7 days</span>
+    <div className="space-y-4">
+
+      {/* ── KPI row ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Total outstanding */}
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-2xl px-4 py-3.5 shadow-md">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-100">Total Outstanding</p>
+          <p className="text-[20px] font-black text-white mt-0.5 leading-tight">Rs {totalOutstanding.toLocaleString()}</p>
+          <p className="text-[10px] text-rose-200 mt-0.5">{cashflowAnalytics.topOutstanding.length} customer{cashflowAnalytics.topOutstanding.length !== 1 ? "s" : ""} with balance</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className={`rounded-xl border px-3 py-2.5 ${cashflowAnalytics.todayNet >= 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Today Net</p>
-            <p className={`text-[16px] font-black mt-0.5 ${cashflowAnalytics.todayNet >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {cashflowAnalytics.todayNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.todayNet).toLocaleString()}
-            </p>
-          </div>
-          <div className={`rounded-xl border px-3 py-2.5 ${cashflowAnalytics.weeklyNet >= 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Weekly Net</p>
-            <p className={`text-[16px] font-black mt-0.5 ${cashflowAnalytics.weeklyNet >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {cashflowAnalytics.weeklyNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.weeklyNet).toLocaleString()}
-            </p>
-          </div>
+
+        {/* Overdue count */}
+        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl px-4 py-3.5 shadow-md">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-100">Most Overdue</p>
+          <p className="text-[20px] font-black text-white mt-0.5 leading-tight">
+            {cashflowAnalytics.overdueList[0] ? `${cashflowAnalytics.overdueList[0].daysPastDue} days` : "—"}
+          </p>
+          <p className="text-[10px] text-amber-100 mt-0.5 truncate">{cashflowAnalytics.overdueList[0]?.customer.name ?? "No overdue"}</p>
         </div>
-        <div className="space-y-2">
+
+        {/* Today net */}
+        <div className={`rounded-2xl px-4 py-3.5 shadow-md ${cashflowAnalytics.todayNet >= 0 ? "bg-gradient-to-br from-slate-600 to-slate-700" : "bg-gradient-to-br from-emerald-500 to-emerald-600"}`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">Today Net</p>
+          <p className="text-[20px] font-black text-white mt-0.5 leading-tight">
+            {cashflowAnalytics.todayNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.todayNet).toLocaleString()}
+          </p>
+          <p className="text-[10px] text-white/60 mt-0.5">{cashflowAnalytics.todayNet >= 0 ? "Net credit today" : "Net collected today"}</p>
+        </div>
+
+        {/* Weekly net */}
+        <div className={`rounded-2xl px-4 py-3.5 shadow-md ${cashflowAnalytics.weeklyNet >= 0 ? "bg-gradient-to-br from-slate-600 to-slate-700" : "bg-gradient-to-br from-emerald-500 to-emerald-600"}`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">7-Day Net</p>
+          <p className="text-[20px] font-black text-white mt-0.5 leading-tight">
+            {cashflowAnalytics.weeklyNet >= 0 ? "+" : "−"}Rs {Math.abs(cashflowAnalytics.weeklyNet).toLocaleString()}
+          </p>
+          <p className="text-[10px] text-white/60 mt-0.5">{cashflowAnalytics.weeklyNet >= 0 ? "Net credit this week" : "Net collected this week"}</p>
+        </div>
+      </div>
+
+      {/* ── Chart + Overdue ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+        {/* 7-day vertical bar chart */}
+        <div className="xl:col-span-2 bg-white rounded-2xl border border-border-soft shadow-sm p-5">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h4 className="text-[13px] font-semibold text-text-dark">Daily Cashflow</h4>
+              <p className="text-[11px] text-text-muted mt-0.5">Net credit vs. payments — last 7 days</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-[10px] text-text-muted">
+                <span className="w-3 h-3 rounded-sm bg-rose-400 shrink-0" />Credit
+              </span>
+              <span className="flex items-center gap-1.5 text-[10px] text-text-muted">
+                <span className="w-3 h-3 rounded-sm bg-emerald-400 shrink-0" />Payment
+              </span>
+            </div>
+          </div>
+
           {(() => {
             const maxAbs = Math.max(1, ...cashflowAnalytics.dailySeries.map((d) => Math.abs(d.value)));
-            return cashflowAnalytics.dailySeries.map((day) => (
-              <div key={day.key} className="flex items-center gap-2">
-                <span className="w-9 text-[11px] text-text-muted">{day.label}</span>
-                <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-full ${day.value >= 0 ? "bg-rose-400" : "bg-emerald-400"}`}
-                    style={{ width: `${(Math.abs(day.value) / maxAbs) * 100}%` }}
-                  />
-                </div>
-                <span className={`text-[11px] font-semibold w-20 text-right ${day.value >= 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                  {day.value >= 0 ? "+" : "−"}Rs {Math.abs(day.value).toLocaleString()}
-                </span>
+            return (
+              <div className="flex items-end justify-between gap-2 h-32">
+                {cashflowAnalytics.dailySeries.map((day) => {
+                  const pct = (Math.abs(day.value) / maxAbs) * 100;
+                  const barH = Math.max(pct, day.value !== 0 ? 6 : 0);
+                  const isToday = day.key === new Date().toISOString().slice(0, 10);
+                  return (
+                    <div key={day.key} className="flex-1 flex flex-col items-center gap-1.5">
+                      {/* Value label */}
+                      <span className={`text-[9px] font-bold ${day.value >= 0 ? "text-rose-500" : "text-emerald-600"} ${day.value === 0 ? "invisible" : ""}`}>
+                        {day.value >= 0 ? "+" : "−"}{Math.abs(day.value) >= 1000 ? `${(Math.abs(day.value) / 1000).toFixed(1)}k` : Math.abs(day.value).toLocaleString()}
+                      </span>
+                      {/* Bar */}
+                      <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
+                        <div
+                          className={`w-full rounded-t-md transition-all ${day.value >= 0 ? "bg-rose-400" : "bg-emerald-400"} ${isToday ? "ring-2 ring-offset-1 ring-rose-300" : ""}`}
+                          style={{ height: `${barH}%`, minHeight: day.value !== 0 ? "4px" : "0" }}
+                        />
+                      </div>
+                      {/* Day label */}
+                      <span className={`text-[10px] font-${isToday ? "bold" : "normal"} ${isToday ? "text-text-dark" : "text-text-muted"}`}>{day.label}</span>
+                    </div>
+                  );
+                })}
               </div>
-            ));
+            );
           })()}
         </div>
+
+        {/* Most Overdue */}
+        <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-5">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h4 className="text-[13px] font-semibold text-text-dark">Most Overdue</h4>
+            <span className="text-[10px] text-text-muted">Days since last settlement</span>
+          </div>
+          {cashflowAnalytics.overdueList.length === 0 ? (
+            <div className="py-8 text-center">
+              <svg className="w-8 h-8 text-emerald-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-[12px] text-text-muted">All accounts are current.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {cashflowAnalytics.overdueList.map(({ customer, daysPastDue }) => {
+                const urgency = daysPastDue > 60 ? "red" : daysPastDue > 30 ? "orange" : daysPastDue > 7 ? "amber" : "slate";
+                const badgeCls = urgency === "red" ? "bg-red-100 text-red-700" : urgency === "orange" ? "bg-orange-100 text-orange-700" : urgency === "amber" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600";
+                const initials = customer.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+                return (
+                  <div key={customer.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-bg transition-colors">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 ${urgency === "red" ? "bg-red-100 text-red-700" : urgency === "orange" ? "bg-orange-100 text-orange-700" : urgency === "amber" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <button type="button" onClick={() => onSelectCustomer(customer.id)} className="text-[12px] font-semibold text-primary hover:text-primary-dark truncate text-left block w-full">
+                        {customer.name}
+                      </button>
+                      <p className="text-[10px] text-text-muted">Rs {customer.balance.toLocaleString()} due</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${badgeCls}`}>
+                      {daysPastDue}d
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-[13px] font-semibold text-text-dark">Highest Remaining Credit</h4>
-          <span className="text-[10px] text-text-muted">Outstanding balance</span>
+      {/* ── Outstanding balances list ── */}
+      <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-[13px] font-semibold text-text-dark">Outstanding Balances</h4>
+            <p className="text-[11px] text-text-muted mt-0.5">{cashflowAnalytics.topOutstanding.length} customer{cashflowAnalytics.topOutstanding.length !== 1 ? "s" : ""} · Total Rs {totalOutstanding.toLocaleString()}</p>
+          </div>
         </div>
         {cashflowAnalytics.topOutstanding.length === 0 ? (
-          <p className="text-[12px] text-text-muted">No outstanding credit.</p>
-        ) : (
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {cashflowAnalytics.topOutstanding.map((item) => (
-              <div key={item.customer.id} className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => onSelectCustomer(item.customer.id)}
-                  className="text-[12px] font-semibold text-primary hover:text-primary-dark truncate text-left"
-                  title={`Open ${item.customer.name} ledger`}
-                >
-                  {item.customer.name}
-                </button>
-                <span className="text-[12px] font-bold text-rose-600">
-                  Rs {item.remainingCredit.toLocaleString()}
-                </span>
-              </div>
-            ))}
+          <div className="py-10 text-center">
+            <svg className="w-8 h-8 text-emerald-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-[13px] text-text-muted">No outstanding credit — all accounts are settled.</p>
           </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl border border-border-soft shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-[13px] font-semibold text-text-dark">Most Overdue</h4>
-          <span className="text-[10px] text-text-muted">Days since last settle</span>
-        </div>
-        {cashflowAnalytics.overdueList.length === 0 ? (
-          <p className="text-[12px] text-text-muted">No overdue customers.</p>
         ) : (
-          <div className="space-y-2">
-              {cashflowAnalytics.overdueList.map(({ customer, daysPastDue }) => (
-              <div key={customer.id} className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => onSelectCustomer(customer.id)}
-                      className="text-[12px] font-semibold text-primary hover:text-primary-dark truncate text-left"
-                      title={`Open ${customer.name} ledger`}
-                    >
-                      {customer.name}
+          <div className="divide-y divide-border-soft max-h-72 overflow-y-auto">
+            {cashflowAnalytics.topOutstanding.map((item, idx) => {
+              const barPct = (item.remainingCredit / maxOutstanding) * 100;
+              const initials = item.customer.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+              return (
+                <div key={item.customer.id} className="flex items-center gap-4 px-5 py-3 hover:bg-bg/60 transition-colors group">
+                  {/* Rank */}
+                  <span className="text-[11px] font-black text-text-muted/40 w-4 shrink-0 text-right">{idx + 1}</span>
+                  {/* Avatar */}
+                  <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-[11px] font-black text-rose-600 shrink-0">
+                    {initials}
+                  </div>
+                  {/* Name + bar */}
+                  <div className="flex-1 min-w-0">
+                    <button type="button" onClick={() => onSelectCustomer(item.customer.id)} className="text-[12px] font-semibold text-text-dark group-hover:text-primary transition-colors truncate text-left block">
+                      {item.customer.name}
                     </button>
-                  <p className="text-[10px] text-text-muted">{daysPastDue} days</p>
+                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-rose-400" style={{ width: `${barPct}%` }} />
+                    </div>
+                  </div>
+                  {/* Phone */}
+                  {item.customer.phone && (
+                    <span className="text-[11px] text-text-muted hidden sm:block shrink-0">{item.customer.phone}</span>
+                  )}
+                  {/* Amount */}
+                  <span className="text-[13px] font-black text-rose-600 shrink-0">Rs {item.remainingCredit.toLocaleString()}</span>
                 </div>
-                <span className="text-[12px] font-bold text-rose-600">Rs {customer.balance.toLocaleString()}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1398,6 +1489,18 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
     .filter((entry) => entry.type === "credit")
     .reduce((sum, entry) => sum + entry.amount, 0);
 
+  const totalDebitAmount = entries
+    .filter((entry) => entry.type === "debit")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+
+  const entriesWithRunning = useMemo(() => {
+    let running = 0;
+    return [...entries].reverse().map((e) => {
+      running += e.type === "credit" ? e.amount : -e.amount;
+      return { ...e, runningBalance: running };
+    }).reverse();
+  }, [entries]);
+
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
   return (
@@ -1406,10 +1509,15 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
 
       {/* ── Left: Customer List ── */}
       <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
-        <div className="bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Total Customer Credit</p>
-          <p className="text-[16px] font-black text-rose-600 mt-0.5">Rs {totalCustomerCredit.toLocaleString()}</p>
-        </div>
+
+        {/* Summary card */}
+        {totalCustomerCredit > 0 && (
+          <div className="rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 px-4 py-3 shadow-md">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-rose-100">Total Outstanding</p>
+            <p className="text-[20px] font-black text-white mt-0.5">Rs {totalCustomerCredit.toLocaleString()}</p>
+            <p className="text-[10px] text-rose-200 mt-0.5">{customers.filter(c => c.balance > 0).length} customer{customers.filter(c => c.balance > 0).length !== 1 ? "s" : ""} with balance due</p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[14px] font-semibold text-text-dark">
@@ -1417,7 +1525,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
           </h3>
           <button
             onClick={() => { setShowAddCustomer(!showAddCustomer); setAddCustomerError(""); }}
-            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d={showAddCustomer ? "M6 18L18 6M6 6l12 12" : "M12 4.5v15m7.5-7.5h-15"} />
@@ -1495,84 +1603,22 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
           </div>
           <div className="grid grid-cols-1 gap-2">
             <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                min="0"
-                value={balanceMin}
-                onChange={(e) => setBalanceMin(e.target.value)}
-                placeholder="Min balance"
-                className={inputCls}
-              />
-              <input
-                type="number"
-                min="0"
-                value={balanceMax}
-                onChange={(e) => setBalanceMax(e.target.value)}
-                placeholder="Max balance"
-                className={inputCls}
-              />
+              <input type="number" min="0" value={balanceMin} onChange={(e) => setBalanceMin(e.target.value)} placeholder="Min balance" className={inputCls} />
+              <input type="number" min="0" value={balanceMax} onChange={(e) => setBalanceMax(e.target.value)} placeholder="Max balance" className={inputCls} />
             </div>
-            <input
-              type="number"
-              min="0"
-              value={lastPaymentDays}
-              onChange={(e) => setLastPaymentDays(e.target.value)}
-              placeholder="Last payment within (days)"
-              className={inputCls}
-            />
-            <input
-              value={areaQuery}
-              onChange={(e) => setAreaQuery(e.target.value)}
-              placeholder="City / Area"
-              className={inputCls}
-            />
-            <input
-              value={tagQuery}
-              onChange={(e) => setTagQuery(e.target.value)}
-              placeholder="Tags (comma separated)"
-              className={inputCls}
-            />
+            <input type="number" min="0" value={lastPaymentDays} onChange={(e) => setLastPaymentDays(e.target.value)} placeholder="Last payment within (days)" className={inputCls} />
+            <input value={areaQuery} onChange={(e) => setAreaQuery(e.target.value)} placeholder="City / Area" className={inputCls} />
+            <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Tags (comma separated)" className={inputCls} />
             <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setBalanceMin("");
-                  setBalanceMax("");
-                  setLastPaymentDays("");
-                  setAreaQuery("");
-                  setTagQuery("");
-                  setShowAdvancedFilters(false);
-                }}
-                className="text-[11px] font-semibold text-text-muted hover:text-text-dark"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowAdvancedFilters(false)}
-                className="text-[11px] font-semibold text-primary hover:text-primary-dark"
-              >
-                Apply
-              </button>
+              <button type="button" onClick={() => { setBalanceMin(""); setBalanceMax(""); setLastPaymentDays(""); setAreaQuery(""); setTagQuery(""); setShowAdvancedFilters(false); }} className="text-[11px] font-semibold text-text-muted hover:text-text-dark">Clear</button>
+              <button type="button" onClick={() => setShowAdvancedFilters(false)} className="text-[11px] font-semibold text-primary hover:text-primary-dark">Apply</button>
               <span className="text-[10px] text-text-muted">{filteredCustomers.length} matches</span>
             </div>
           </div>
           {savedFilters.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-2 border-t border-border-soft">
               {savedFilters.map((preset) => (
-                <button
-                  key={preset.name}
-                  type="button"
-                  onClick={() => {
-                    setBalanceMin(preset.balanceMin);
-                    setBalanceMax(preset.balanceMax);
-                    setLastPaymentDays(preset.lastPaymentDays);
-                    setAreaQuery(preset.areaQuery);
-                    setTagQuery(preset.tagQuery);
-                    setShowAdvancedFilters(false);
-                  }}
-                  className="px-2.5 py-1 rounded-full text-[10px] font-bold border border-border-soft bg-bg hover:bg-white"
-                >
+                <button key={preset.name} type="button" onClick={() => { setBalanceMin(preset.balanceMin); setBalanceMax(preset.balanceMax); setLastPaymentDays(preset.lastPaymentDays); setAreaQuery(preset.areaQuery); setTagQuery(preset.tagQuery); setShowAdvancedFilters(false); }} className="px-2.5 py-1 rounded-full text-[10px] font-bold border border-border-soft bg-bg hover:bg-white">
                   {preset.name}
                 </button>
               ))}
@@ -1585,105 +1631,147 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
         <div className="space-y-1.5 max-h-[280px] lg:max-h-[620px] overflow-y-auto pr-1">
           {loadingCustomers ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-14 bg-white rounded-xl border border-border-soft animate-pulse" />
+              <div key={i} className="h-16 bg-white rounded-xl border border-border-soft animate-pulse" />
             ))
           ) : filteredCustomers.length === 0 ? (
-            <p className="text-[12px] text-text-muted text-center py-8">
-              {customerSearch ? "No customers match" : "No customers yet"}
-            </p>
-          ) : filteredCustomers.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedCustomer(c)}
-              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                selectedCustomer?.id === c.id
-                  ? "bg-primary/5 border-primary/30 shadow-sm"
-                  : "bg-white border-border-soft hover:bg-bg"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-text-dark truncate">{c.name}</p>
-                  {c.phone && <p className="text-[11px] text-text-muted">{c.phone}</p>}
+            <div className="py-10 text-center">
+              <svg className="w-10 h-10 text-text-muted/30 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+              <p className="text-[12px] text-text-muted">{customerSearch ? "No customers match" : "No customers yet"}</p>
+            </div>
+          ) : filteredCustomers.map((c) => {
+            const initials = c.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+            const isSelected = selectedCustomer?.id === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCustomer(c)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${
+                  isSelected ? "bg-rose-50 border-rose-200 shadow-sm" : "bg-white border-border-soft hover:bg-bg"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-[12px] font-black ${
+                    isSelected ? "bg-rose-500 text-white" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    {initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-text-dark truncate">{c.name}</p>
+                    {c.phone && <p className="text-[11px] text-text-muted">{c.phone}</p>}
+                  </div>
+                  <span className={`text-[11px] font-bold shrink-0 px-2 py-0.5 rounded-full ${
+                    c.balance > 0
+                      ? "bg-rose-50 text-rose-600"
+                      : c.balance < 0
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-slate-100 text-slate-400"
+                  }`}>
+                    {c.balance > 0
+                      ? `Rs ${c.balance.toLocaleString()}`
+                      : c.balance < 0
+                      ? `+${Math.abs(c.balance).toLocaleString()}`
+                      : "Settled"}
+                  </span>
                 </div>
-                <span className={`text-[12px] font-bold shrink-0 ${
-                  c.balance > 0 ? "text-rose-600" : c.balance < 0 ? "text-emerald-600" : "text-slate-400"
-                }`}>
-                  {c.balance > 0
-                    ? `Rs ${c.balance.toLocaleString()}`
-                    : c.balance < 0
-                    ? `-Rs ${Math.abs(c.balance).toLocaleString()}`
-                    : "Settled"}
-                </span>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* ── Right: Ledger Panel ── */}
       {selectedCustomer ? (
         <div className="flex-1 min-w-0 space-y-4">
-          {/* Customer Info + Balance */}
-          <div className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h3 className="text-[17px] font-bold text-text-dark">{selectedCustomer.name}</h3>
-                <div className="flex flex-wrap gap-4 mt-2">
-                  {selectedCustomer.phone && (
-                    <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>
-                      {selectedCustomer.phone}
+
+          {/* Customer Banner Header */}
+          <div className={`rounded-2xl overflow-hidden shadow-md ${
+            selectedCustomer.balance > 0
+              ? "bg-gradient-to-br from-rose-500 via-rose-600 to-rose-700"
+              : selectedCustomer.balance < 0
+              ? "bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700"
+              : "bg-gradient-to-br from-slate-500 via-slate-600 to-slate-700"
+          }`}>
+            <div className="px-5 py-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  {/* Initials avatar */}
+                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                    <span className="text-[20px] font-black text-white">
+                      {selectedCustomer.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
                     </span>
-                  )}
-                  {selectedCustomer.address && (
-                    <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
-                      {selectedCustomer.address}
-                    </span>
-                  )}
+                  </div>
+                  <div>
+                    <h3 className="text-[18px] font-black text-white leading-tight">{selectedCustomer.name}</h3>
+                    <div className="flex flex-wrap gap-3 mt-1.5">
+                      {selectedCustomer.phone && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[12px] text-white/80">{selectedCustomer.phone}</span>
+                          <a
+                            href={`https://wa.me/92${selectedCustomer.phone.replace(/^0/, "").replace(/\D/g, "")}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold transition-colors"
+                          >
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                            WhatsApp
+                          </a>
+                        </div>
+                      )}
+                      {selectedCustomer.address && (
+                        <span className="flex items-center gap-1 text-[12px] text-white/80">
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                          {selectedCustomer.address}
+                        </span>
+                      )}
+                    </div>
+                    {selectedCustomer.tags && selectedCustomer.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {selectedCustomer.tags.map((tag) => (
+                          <span key={tag} className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Balance + actions */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">
+                      {selectedCustomer.balance > 0 ? "Owes" : selectedCustomer.balance < 0 ? "Advance Paid" : "Settled"}
+                    </p>
+                    <p className="text-[26px] font-black text-white leading-tight">
+                      {selectedCustomer.balance === 0 ? "✔" : `Rs ${Math.abs(selectedCustomer.balance).toLocaleString()}`}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={openEditCustomer} className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-semibold transition-colors">
+                      Edit
+                    </button>
+                    <button type="button" onClick={handleDeleteCustomer} disabled={deletingCustomer} className="px-3 py-1.5 rounded-lg bg-black/20 hover:bg-black/30 text-white text-[11px] font-semibold disabled:opacity-60 transition-colors">
+                      {deletingCustomer ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-col items-stretch sm:items-end gap-3 w-full sm:w-auto">
-                <div className={`rounded-2xl px-5 py-3 text-right border ${
-                  selectedCustomer.balance > 0
-                    ? "bg-rose-50 border-rose-100"
-                    : selectedCustomer.balance < 0
-                    ? "bg-emerald-50 border-emerald-100"
-                    : "bg-slate-50 border-slate-100"
-                }`}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                    {selectedCustomer.balance > 0 ? "Owes" : selectedCustomer.balance < 0 ? "Advance Paid" : "Settled"}
-                  </p>
-                  <p className={`text-[22px] font-black mt-0.5 ${
-                    selectedCustomer.balance > 0
-                      ? "text-rose-600"
-                      : selectedCustomer.balance < 0
-                      ? "text-emerald-600"
-                      : "text-slate-400"
-                  }`}>
-                    {selectedCustomer.balance === 0
-                      ? "✔"
-                      : `Rs ${Math.abs(selectedCustomer.balance).toLocaleString()}`}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={openEditCustomer}
-                    className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
-                  >
-                    Edit Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteCustomer}
-                    disabled={deletingCustomer}
-                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
-                  >
-                    {deletingCustomer ? "Removing..." : "Remove Customer"}
-                  </button>
-                </div>
+            </div>
+
+            {/* Summary stats strip */}
+            <div className="bg-black/10 px-5 py-3 grid grid-cols-3 divide-x divide-white/10">
+              <div className="pr-4">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Total Credited</p>
+                <p className="text-[13px] font-black text-white mt-0.5">Rs {totalCreditAmount.toLocaleString()}</p>
+              </div>
+              <div className="px-4">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Total Paid</p>
+                <p className="text-[13px] font-black text-white mt-0.5">Rs {totalDebitAmount.toLocaleString()}</p>
+              </div>
+              <div className="pl-4">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Transactions</p>
+                <p className="text-[13px] font-black text-white mt-0.5">{entries.length}</p>
               </div>
             </div>
           </div>
@@ -1692,11 +1780,7 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             <form onSubmit={handleEditCustomer} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <h4 className="text-[13px] font-semibold text-text-dark">Edit Customer Details</h4>
-                <button
-                  type="button"
-                  onClick={() => { setShowEditCustomer(false); setEditCustomerError(""); }}
-                  className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors"
-                >
+                <button type="button" onClick={() => { setShowEditCustomer(false); setEditCustomerError(""); }} className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors">
                   Cancel
                 </button>
               </div>
@@ -1704,38 +1788,13 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                 <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editCustomerError}</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  required
-                  value={editCustomer.name}
-                  onChange={(e) => setEditCustomer((v) => ({ ...v, name: e.target.value }))}
-                  placeholder="Customer Name *"
-                  className={inputCls}
-                />
-                <input
-                  value={editCustomer.phone}
-                  onChange={(e) => setEditCustomer((v) => ({ ...v, phone: e.target.value }))}
-                  placeholder="Phone"
-                  className={inputCls}
-                />
-                <input
-                  value={editCustomer.address}
-                  onChange={(e) => setEditCustomer((v) => ({ ...v, address: e.target.value }))}
-                  placeholder="Address"
-                  className={inputCls}
-                />
-                <input
-                  value={editCustomer.tags}
-                  onChange={(e) => setEditCustomer((v) => ({ ...v, tags: e.target.value }))}
-                  placeholder="Tags (comma separated)"
-                  className={inputCls}
-                />
+                <input required value={editCustomer.name} onChange={(e) => setEditCustomer((v) => ({ ...v, name: e.target.value }))} placeholder="Customer Name *" className={inputCls} />
+                <input value={editCustomer.phone} onChange={(e) => setEditCustomer((v) => ({ ...v, phone: e.target.value }))} placeholder="Phone" className={inputCls} />
+                <input value={editCustomer.address} onChange={(e) => setEditCustomer((v) => ({ ...v, address: e.target.value }))} placeholder="Address" className={inputCls} />
+                <input value={editCustomer.tags} onChange={(e) => setEditCustomer((v) => ({ ...v, tags: e.target.value }))} placeholder="Tags (comma separated)" className={inputCls} />
               </div>
               <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={editingCustomer}
-                  className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors"
-                >
+                <button type="submit" disabled={editingCustomer} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
                   {editingCustomer ? "Saving..." : "Save Changes"}
                 </button>
               </div>
@@ -1750,149 +1809,159 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Credit / Debit toggle */}
-              <div className="flex rounded-xl border border-border-soft overflow-hidden">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setEntryType("credit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
-                    entryType === "credit" ? "bg-rose-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${
+                    entryType === "credit"
+                      ? "border-rose-500 bg-rose-500 text-white shadow-sm"
+                      : "border-border-soft bg-white text-text-muted hover:border-rose-200 hover:text-rose-500"
                   }`}
                 >
-                  + Credit
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  Credit
                 </button>
                 <button
                   type="button"
                   onClick={() => setEntryType("debit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
-                    entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
+                  className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${
+                    entryType === "debit"
+                      ? "border-emerald-500 bg-emerald-500 text-white shadow-sm"
+                      : "border-border-soft bg-white text-text-muted hover:border-emerald-200 hover:text-emerald-600"
                   }`}
                 >
-                  − Debit
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" /></svg>
+                  Payment
                 </button>
               </div>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={entryAmount}
-                onChange={(e) => setEntryAmount(e.target.value)}
-                placeholder="Amount (Rs)"
-                className={inputCls}
-              />
-              <input
-                required
-                value={entryNote}
-                onChange={(e) => setEntryNote(e.target.value)}
-                placeholder="Note / Description *"
-                className={inputCls}
-              />
+              {/* Amount with Rs prefix */}
+              <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all">
+                <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-r border-border-soft bg-white shrink-0">Rs</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={entryAmount}
+                  onChange={(e) => setEntryAmount(e.target.value)}
+                  placeholder="0"
+                  className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none"
+                />
+              </div>
+              <input required value={entryNote} onChange={(e) => setEntryNote(e.target.value)} placeholder="Note / Description *" className={inputCls} />
             </div>
             <div className="flex justify-end">
-              <button type="submit" disabled={addingEntry} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={addingEntry}
+                className={`px-6 py-2.5 rounded-xl text-white text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center gap-2 ${
+                  entryType === "credit" ? "bg-rose-500 hover:bg-rose-600" : "bg-emerald-500 hover:bg-emerald-600"
+                }`}
+              >
                 {addingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
-                {addingEntry ? "Saving…" : "Add Transaction"}
+                {addingEntry ? "Saving…" : entryType === "credit" ? "Add Credit" : "Record Payment"}
               </button>
             </div>
           </form>
 
-          {/* Transaction History Table */}
+          {/* Transaction History */}
           <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
                 <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
               </div>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-600 text-[11px] font-bold">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
-                  </svg>
-                  Total Credit: Rs {totalCreditAmount.toLocaleString()}
-                </span>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  disabled={entries.length === 0}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 text-white text-[11px] font-semibold hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
-                  </svg>
-                  Print Receipt
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={entries.length === 0}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 text-white text-[11px] font-semibold hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                </svg>
+                Print Receipt
+              </button>
             </div>
+
             {loadingEntries ? (
               <div className="p-5 space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-10 bg-bg rounded-lg animate-pulse" />
+                  <div key={i} className="h-12 bg-bg rounded-lg animate-pulse" />
                 ))}
               </div>
             ) : entries.length === 0 ? (
-              <div className="py-12 text-center">
+              <div className="py-14 text-center">
+                <svg className="w-10 h-10 text-text-muted/20 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                </svg>
                 <p className="text-[13px] text-text-muted">No transactions yet. Add one above.</p>
               </div>
             ) : (
               <>
+                {/* Mobile cards */}
                 <div className="md:hidden p-3 space-y-2">
-                  {entries.map((entry) => (
+                  {entriesWithRunning.map((entry) => (
                     <div key={entry.id} className="rounded-xl border border-border-soft bg-white p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-text-muted">{fmt(entry.createdAt)}</span>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
-                          {entry.type === "credit" ? "+ Credit" : "− Debit"}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))}
-                        className={`mt-2 w-full text-left ${entry.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[14px] font-bold">Rs {entry.amount.toLocaleString()}</p>
-                          <span className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 text-slate-500">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6-1.5c-1.8-4.5-5.5-7.5-9-7.5S4.8 6 3 10.5c1.8 4.5 5.5 7.5 9 7.5s7.2-3 9-7.5z" />
-                            </svg>
-                          </span>
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white font-black text-[13px] ${
+                          entry.type === "credit" ? "bg-rose-500" : "bg-emerald-500"
+                        }`}>
+                          {entry.type === "credit" ? "+" : "−"}
                         </div>
-                        {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
-                          <p className="text-[10px] font-medium text-amber-700 mt-1">
-                            Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
-                          </p>
-                        )}
-                      </button>
-
-                      <p className="mt-2 text-[12px] text-text-dark">{entry.note ?? <span className="text-text-muted italic">—</span>}</p>
-
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => openEditEntry(entry)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
-                          Edit
-                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className={`text-[14px] font-black ${entry.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}>
+                                Rs {entry.amount.toLocaleString()}
+                              </p>
+                              <p className="text-[12px] text-text-dark mt-0.5">{entry.note ?? <span className="text-text-muted italic">—</span>}</p>
+                              {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
+                                <p className="text-[10px] italic text-amber-600 mt-0.5">edited</p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-[10px] text-text-muted">{fmt(entry.createdAt)}</p>
+                              <p className={`text-[11px] font-bold mt-0.5 ${entry.runningBalance > 0 ? "text-rose-500" : entry.runningBalance < 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                                Bal: Rs {Math.abs(entry.runningBalance).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))}
+                              className="text-[11px] text-primary font-medium hover:underline"
+                            >
+                              {expandedEntryId === entry.id ? "Hide details" : "Details"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditEntry(entry)}
+                              className="inline-flex items-center gap-1 px-3 py-1 rounded-lg border border-border-soft text-[11px] font-medium text-text-soft hover:bg-bg transition-colors"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                              Edit
+                            </button>
+                          </div>
+                        </div>
                       </div>
-
                       {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
-                        <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/50 px-3 py-3 animate-ledger-details-open">
-                          <div className="grid grid-cols-1 gap-2">
-                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Previous Credit</p>
-                              <p className="text-[13px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
-                            </div>
-                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credit Amount" : "Debit Amount"}</p>
-                              <p className={`text-[13px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
-                            </div>
-                            <div className="rounded-xl border border-border-soft bg-white px-3 py-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Balance Status</p>
-                              <p className="text-[13px] font-black text-text-dark mt-0.5">Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}</p>
-                            </div>
+                        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-3 animate-ledger-details-open grid grid-cols-3 gap-2">
+                          <div className="rounded-lg border border-border-soft bg-white px-2 py-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Prev Credit</p>
+                            <p className="text-[12px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-soft bg-white px-2 py-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credited" : "Paid"}</p>
+                            <p className={`text-[12px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
+                          </div>
+                          <div className="rounded-lg border border-border-soft bg-white px-2 py-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-text-muted">New Balance</p>
+                            <p className="text-[12px] font-black text-text-dark mt-0.5">
+                              Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}
+                            </p>
                           </div>
                         </div>
                       )}
@@ -1900,198 +1969,122 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                   ))}
                 </div>
 
+                {/* Desktop table */}
                 <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-bg/60">
-                      {["Date", "Type", "Amount", "Note", "Actions"].map((h) => (
-                        <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-soft">
-                    {entries.map((entry) => (
-                      <Fragment key={entry.id}>
-                        <tr className="hover:bg-bg/40 transition-colors">
-                          <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
-                          <td className="px-5 py-3.5 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
-                              entry.type === "credit" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"
-                            }`}>
-                              {entry.type === "credit" ? "+ Credit" : "− Debit"}
-                            </span>
-                          </td>
-                          <td className={`px-5 py-3.5 text-[13px] font-bold ${
-                            entry.type === "credit" ? "text-rose-600" : "text-emerald-600"
-                          }`}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id));
-                              }}
-                              className="w-full text-left cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between gap-2 w-full">
-                                <p className="min-w-0 flex-1">Rs {entry.amount.toLocaleString()}</p>
-                                <span className="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6-1.5c-1.8-4.5-5.5-7.5-9-7.5S4.8 6 3 10.5c1.8 4.5 5.5 7.5 9 7.5s7.2-3 9-7.5z" />
-                                  </svg>
-                                </span>
-                              </div>
-                              {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
-                                <p className="text-[10px] font-medium text-amber-700 mt-0.5">
-                                  Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
-                                </p>
-                              )}
-                            </button>
-                          </td>
-                          <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
-                            {entry.note ?? <span className="text-text-muted italic">—</span>}
-                          </td>
-                          <td className="px-5 py-3.5 pr-6">
-                            <button
-                              type="button"
-                              onClick={() => openEditEntry(entry)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
-                              Edit
-                            </button>
-                          </td>
-                        </tr>
-                        {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
-                          <tr className="bg-blue-50/50 animate-ledger-details-open">
-                            <td colSpan={5} className="px-5 py-4 pl-6 pr-6">
-                              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm animate-ledger-details-open">
-                                <div className="flex items-start justify-between gap-3 flex-wrap">
-                                  <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-wider text-blue-500">{entry.type === "credit" ? "Credit Details" : "Debit Details"}</p>
-                                    <p className="text-[13px] font-semibold text-text-dark mt-0.5">{entry.note ?? `${entry.type === "credit" ? "Credit" : "Debit"} transaction`}</p>
-                                  </div>
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold whitespace-nowrap">
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8m4-4H8m12 0a8 8 0 11-16 0 8 8 0 0116 0z" />
-                                    </svg>
-                                    {entry.type === "credit" ? "Credit" : "Debit"}
-                                  </span>
-                                </div>
-
-                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Previous Credit</p>
-                                    <p className="text-[14px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credit Amount" : "Debit Amount"}</p>
-                                    <p className={`text-[14px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Balance Status</p>
-                                    <p className="text-[14px] font-black text-text-dark mt-0.5">
-                                      Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-bg/60">
+                        {["Date", "Type", "Amount", "Note", "Balance", ""].map((h, i) => (
+                          <th key={i} className="text-left px-4 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-soft">
+                      {entriesWithRunning.map((entry) => (
+                        <Fragment key={entry.id}>
+                          <tr className="hover:bg-bg/40 transition-colors">
+                            <td className="px-4 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
+                            <td className="px-4 py-3.5">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-[13px] ${
+                                entry.type === "credit" ? "bg-rose-500" : "bg-emerald-500"
+                              }`}>
+                                {entry.type === "credit" ? "+" : "−"}
                               </div>
                             </td>
+                            <td className={`px-4 py-3.5 text-[13px] font-bold ${entry.type === "credit" ? "text-rose-600" : "text-emerald-600"}`}>
+                              <button type="button" onClick={() => setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))} className="text-left">
+                                <p>Rs {entry.amount.toLocaleString()}</p>
+                                {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
+                                  <p className="text-[10px] italic text-amber-600 font-normal mt-0.5">edited</p>
+                                )}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 text-[12px] text-text-dark max-w-[180px]">
+                              <span className="line-clamp-2">{entry.note ?? <span className="text-text-muted italic">—</span>}</span>
+                            </td>
+                            <td className="px-4 py-3.5 pr-6">
+                              <span className={`text-[12px] font-bold ${entry.runningBalance > 0 ? "text-rose-500" : entry.runningBalance < 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                                Rs {Math.abs(entry.runningBalance).toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 pr-6">
+                              <button
+                                type="button"
+                                onClick={() => openEditEntry(entry)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[11px] font-medium text-text-soft hover:bg-bg transition-colors whitespace-nowrap"
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                                Edit
+                              </button>
+                            </td>
                           </tr>
-                        )}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
+                          {expandedEntryId === entry.id && typeof entry.previousCreditBalance === "number" && (
+                            <tr className="bg-blue-50/50 animate-ledger-details-open">
+                              <td colSpan={6} className="px-6 py-4">
+                                <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-500 mb-3">{entry.type === "credit" ? "Credit" : "Payment"} Details</p>
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Previous Credit</p>
+                                      <p className="text-[14px] font-black text-blue-700 mt-0.5">Rs {entry.previousCreditBalance.toLocaleString()}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{entry.type === "credit" ? "Credited" : "Paid"}</p>
+                                      <p className={`text-[14px] font-black mt-0.5 ${entry.type === "credit" ? "text-rose-600" : "text-emerald-700"}`}>Rs {entry.amount.toLocaleString()}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-border-soft bg-bg px-3 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">New Balance</p>
+                                      <p className="text-[14px] font-black text-text-dark mt-0.5">
+                                        Rs {(entry.type === "credit" ? entry.previousCreditBalance + entry.amount : entry.previousCreditBalance - entry.amount).toLocaleString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </>
             )}
           </div>
 
+          {/* Edit Transaction Modal */}
           {editEntryTarget && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                onClick={() => {
-                  if (editingEntry) return;
-                  setEditEntryTarget(null);
-                  setEditEntryError("");
-                }}
-              />
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (editingEntry) return; setEditEntryTarget(null); setEditEntryError(""); }} />
               <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
                 <div>
                   <h3 className="text-[15px] font-semibold text-text-dark">Edit Transaction</h3>
                   <p className="text-[12px] text-text-muted mt-0.5">Enter your admin password to update this ledger entry.</p>
                 </div>
-
                 <div className="bg-bg rounded-xl px-4 py-3">
                   <p className="text-[13px] font-semibold text-text-dark">{selectedCustomer.name}</p>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {fmt(editEntryTarget.createdAt)} · {editEntryTarget.type === "credit" ? "+ Credit" : "− Debit"} · Rs {editEntryTarget.amount.toLocaleString()}
-                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">{fmt(editEntryTarget.createdAt)} · {editEntryTarget.type === "credit" ? "+ Credit" : "− Debit"} · Rs {editEntryTarget.amount.toLocaleString()}</p>
                 </div>
-
                 {editEntryError && (
                   <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
                     <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
                     <p className="text-[12px] text-red-600">{editEntryError}</p>
                   </div>
                 )}
-
                 <form onSubmit={handleEditEntry} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-1 flex rounded-xl border border-border-soft overflow-hidden h-fit">
-                      <button
-                        type="button"
-                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "credit" }))}
-                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
-                          editEntryForm.type === "credit" ? "bg-rose-500 text-white" : "bg-white text-text-muted hover:bg-bg"
-                        }`}
-                      >
-                        + Credit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "debit" }))}
-                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
-                          editEntryForm.type === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
-                        }`}
-                      >
-                        − Debit
-                      </button>
+                    <div className="sm:col-span-1 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setEditEntryForm((v) => ({ ...v, type: "credit" }))} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all ${editEntryForm.type === "credit" ? "border-rose-500 bg-rose-500 text-white" : "border-border-soft bg-white text-text-muted hover:border-rose-200"}`}>+ Credit</button>
+                      <button type="button" onClick={() => setEditEntryForm((v) => ({ ...v, type: "debit" }))} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all ${editEntryForm.type === "debit" ? "border-emerald-500 bg-emerald-500 text-white" : "border-border-soft bg-white text-text-muted hover:border-emerald-200"}`}>− Payment</button>
                     </div>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      required
-                      value={editEntryForm.amount}
-                      onChange={(e) => setEditEntryForm((v) => ({ ...v, amount: e.target.value }))}
-                      placeholder="Amount (Rs)"
-                      className={inputCls}
-                    />
-                    <input
-                      value={editEntryForm.note}
-                      onChange={(e) => setEditEntryForm((v) => ({ ...v, note: e.target.value }))}
-                      placeholder="Note / Description"
-                      className={inputCls}
-                    />
+                    <input type="number" min="0.01" step="0.01" required value={editEntryForm.amount} onChange={(e) => setEditEntryForm((v) => ({ ...v, amount: e.target.value }))} placeholder="Amount (Rs)" className={inputCls} />
+                    <input value={editEntryForm.note} onChange={(e) => setEditEntryForm((v) => ({ ...v, note: e.target.value }))} placeholder="Note / Description" className={inputCls} />
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[12px] font-medium text-text-dark">Admin Password *</label>
                     <div className="relative">
-                      <input
-                        required
-                        type={showEditEntryPassword ? "text" : "password"}
-                        value={editEntryForm.password}
-                        onChange={(e) => setEditEntryForm((v) => ({ ...v, password: e.target.value }))}
-                        placeholder="Enter your password"
-                        className={inputCls + " pr-10"}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowEditEntryPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark"
-                      >
+                      <input required type={showEditEntryPassword ? "text" : "password"} value={editEntryForm.password} onChange={(e) => setEditEntryForm((v) => ({ ...v, password: e.target.value }))} placeholder="Enter your password" className={inputCls + " pr-10"} />
+                      <button type="button" onClick={() => setShowEditEntryPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark">
                         {showEditEntryPassword
                           ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
                           : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -2099,24 +2092,9 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
                       </button>
                     </div>
                   </div>
-
                   <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editingEntry) return;
-                        setEditEntryTarget(null);
-                        setEditEntryError("");
-                      }}
-                      className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={editingEntry}
-                      className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                    >
+                    <button type="button" onClick={() => { if (editingEntry) return; setEditEntryTarget(null); setEditEntryError(""); }} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                    <button type="submit" disabled={editingEntry} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
                       {editingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
                       {editingEntry ? "Verifying…" : "Verify & Save"}
                     </button>
@@ -2128,9 +2106,11 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center py-12 lg:py-24 text-center bg-white rounded-2xl border border-border-soft shadow-sm">
-          <svg className="w-14 h-14 text-text-muted/25 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-          </svg>
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-rose-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          </div>
           <p className="text-[15px] font-semibold text-text-dark">Select a customer</p>
           <p className="text-[12px] text-text-muted mt-1">Click any customer on the left to view and manage their ledger</p>
         </div>
@@ -2139,16 +2119,9 @@ ${selectedCustomer.address ? `<p class="sub" style="text-align:left;">${selected
 
       <style jsx>{`
         @keyframes ledger-details-open {
-          0% {
-            opacity: 0;
-            transform: translateY(-6px) scaleY(0.98);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scaleY(1);
-          }
+          0% { opacity: 0; transform: translateY(-6px) scaleY(0.98); }
+          100% { opacity: 1; transform: translateY(0) scaleY(1); }
         }
-
         .animate-ledger-details-open {
           animation: ledger-details-open 220ms ease-out;
           transform-origin: top;
@@ -2506,24 +2479,36 @@ function EmployeeLedgerView() {
 
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-border-soft bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all";
 
+  const entriesWithRunning = useMemo(() => {
+    let running = 0;
+    return [...entries].reverse().map((e) => {
+      running += e.type === "credit" ? e.amount : -e.amount;
+      return { ...e, runningBalance: running };
+    }).reverse();
+  }, [entries]);
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-stretch lg:items-start">
+
+      {/* ── Left: Employee list ── */}
       <div className="w-full lg:w-72 lg:shrink-0 space-y-3">
-        <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Total Employee Payable</p>
-          <p className="text-[16px] font-black text-blue-700 mt-0.5">Rs {totalPayable.toLocaleString()}</p>
-        </div>
+
+        {/* Summary card */}
+        {totalPayable > 0 && (
+          <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 px-4 py-3 shadow-md">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-100">Total Advances Payable</p>
+            <p className="text-[20px] font-black text-white mt-0.5">Rs {totalPayable.toLocaleString()}</p>
+            <p className="text-[10px] text-indigo-200 mt-0.5">{employees.filter(e => e.balance > 0).length} employee{employees.filter(e => e.balance > 0).length !== 1 ? "s" : ""} with advances</p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[14px] font-semibold text-text-dark">
             Employees <span className="text-text-muted font-normal">({employees.length})</span>
           </h3>
           <button
-            onClick={() => {
-              setShowAddEmployee((v) => !v);
-              setAddEmployeeError("");
-            }}
-            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+            onClick={() => { setShowAddEmployee((v) => !v); setAddEmployeeError(""); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-[12px] font-semibold rounded-lg hover:bg-primary-dark transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d={showAddEmployee ? "M6 18L18 6M6 6l12 12" : "M12 4.5v15m7.5-7.5h-15"} />
@@ -2537,69 +2522,24 @@ function EmployeeLedgerView() {
             {addEmployeeError && (
               <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addEmployeeError}</p>
             )}
-            <input
-              required
-              value={newEmployee.name}
-              onChange={(e) => setNewEmployee((v) => ({ ...v, name: e.target.value }))}
-              placeholder="Employee Name *"
-              className={inputCls}
-            />
-            <input
-              required
-              type="date"
-              value={newEmployee.joiningDate}
-              onChange={(e) => setNewEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
-              className={inputCls}
-            />
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">Rs</span>
-              <input
-                required
-                type="number"
-                min="1"
-                step="1"
-                value={newEmployee.salary}
-                onChange={(e) => setNewEmployee((v) => ({ ...v, salary: e.target.value }))}
-                placeholder="Monthly Salary *"
-                className={inputCls + " pl-9"}
-              />
+            <input required value={newEmployee.name} onChange={(e) => setNewEmployee((v) => ({ ...v, name: e.target.value }))} placeholder="Employee Name *" className={inputCls} />
+            <input required type="date" value={newEmployee.joiningDate} onChange={(e) => setNewEmployee((v) => ({ ...v, joiningDate: e.target.value }))} className={inputCls} />
+            <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-r border-border-soft bg-white shrink-0">Rs</span>
+              <input required type="number" min="1" step="1" value={newEmployee.salary} onChange={(e) => setNewEmployee((v) => ({ ...v, salary: e.target.value }))} placeholder="Monthly Salary *" className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none" />
             </div>
-            <div className="relative">
-              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">%</span>
-              <input
-                required
-                type="number"
-                min="1"
-                max="100"
-                step="1"
-                value={newEmployee.creditLimitPercent}
-                onChange={(e) => setNewEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))}
-                placeholder="Credit Limit % (default 30)"
-                className={inputCls + " pr-8"}
-              />
+            <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              <input required type="number" min="1" max="100" step="1" value={newEmployee.creditLimitPercent} onChange={(e) => setNewEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))} placeholder="Credit Limit %" className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none" />
+              <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-l border-border-soft bg-white shrink-0">%</span>
             </div>
-            <select
-              required
-              value={newEmployee.salaryType}
-              onChange={(e) => setNewEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))}
-              className={inputCls}
-            >
+            <select required value={newEmployee.salaryType} onChange={(e) => setNewEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))} className={inputCls}>
               <option value="monthly">Monthly Salary</option>
               <option value="weekly">Weekly Salary</option>
             </select>
-            <input
-              value={newEmployee.phone}
-              onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))}
-              placeholder="Phone (optional)"
-              className={inputCls}
-            />
-            <input
-              value={newEmployee.address}
-              onChange={(e) => setNewEmployee((v) => ({ ...v, address: e.target.value }))}
-              placeholder="Address (optional)"
-              className={inputCls}
-            />
-            <button type="submit" disabled={addingEmployee} className="w-full py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
+            <input value={newEmployee.phone} onChange={(e) => setNewEmployee((v) => ({ ...v, phone: e.target.value }))} placeholder="Phone (optional)" className={inputCls} />
+            <input value={newEmployee.address} onChange={(e) => setNewEmployee((v) => ({ ...v, address: e.target.value }))} placeholder="Address (optional)" className={inputCls} />
+            <button type="submit" disabled={addingEmployee} className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-[13px] font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+              {addingEmployee && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
               {addingEmployee ? "Saving…" : "Save Employee"}
             </button>
           </form>
@@ -2609,457 +2549,356 @@ function EmployeeLedgerView() {
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
-          <input
-            type="text"
-            value={employeeSearch}
-            onChange={(e) => setEmployeeSearch(e.target.value)}
-            placeholder="Search by name or phone…"
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-          />
+          <input type="text" value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} placeholder="Search by name or phone…" className="w-full pl-9 pr-4 py-2 rounded-xl border border-border-soft bg-white text-[13px] text-text-dark placeholder:text-text-muted/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all" />
         </div>
 
         <div className="space-y-1.5 max-h-[280px] lg:max-h-[620px] overflow-y-auto pr-1">
           {loadingEmployees ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-14 bg-white rounded-xl border border-border-soft animate-pulse" />
+              <div key={i} className="h-16 bg-white rounded-xl border border-border-soft animate-pulse" />
             ))
           ) : filteredEmployees.length === 0 ? (
-            <p className="text-[12px] text-text-muted text-center py-8">
-              {employeeSearch ? "No employees match" : "No employees yet"}
-            </p>
-          ) : filteredEmployees.map((employee) => (
-            <button
-              key={employee.id}
-              onClick={() => setSelectedEmployee(employee)}
-              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                selectedEmployee?.id === employee.id
-                  ? "bg-primary/5 border-primary/30 shadow-sm"
-                  : "bg-white border-border-soft hover:bg-bg"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
-                  <p className="text-[11px] text-text-muted">Joined: {fmtDate(employee.joiningDate)}</p>
-                  {/* {employee.salary > 0 && <p className="text-[10px] text-blue-600 font-semibold">Salary: Rs {employee.salary.toLocaleString()}</p>} */}
+            <div className="py-10 text-center">
+              <svg className="w-10 h-10 text-text-muted/30 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+              <p className="text-[12px] text-text-muted">{employeeSearch ? "No employees match" : "No employees yet"}</p>
+            </div>
+          ) : filteredEmployees.map((employee) => {
+            const initials = employee.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+            const isSelected = selectedEmployee?.id === employee.id;
+            return (
+              <button
+                key={employee.id}
+                onClick={() => setSelectedEmployee(employee)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${isSelected ? "bg-indigo-50 border-indigo-200 shadow-sm" : "bg-white border-border-soft hover:bg-bg"}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-[12px] font-black ${isSelected ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}>
+                    {initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
+                    <p className="text-[11px] text-text-muted">Rs {employee.salary.toLocaleString()} / {employee.salaryType === "weekly" ? "wk" : "mo"}</p>
+                  </div>
+                  {employee.balance !== 0 && (
+                    <span className={`text-[11px] font-bold shrink-0 px-2 py-0.5 rounded-full ${employee.balance > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-600"}`}>
+                      {employee.balance > 0 ? `Rs ${employee.balance.toLocaleString()}` : "Overpaid"}
+                    </span>
+                  )}
                 </div>
-                {/* <span className={`text-[12px] font-bold shrink-0 ${
-                  employee.balance > 0 ? "text-blue-700" : employee.balance < 0 ? "text-emerald-600" : "text-slate-400"
-                }`}>
-                  {employee.balance > 0
-                    ? `Rs ${employee.balance.toLocaleString()}`
-                    : employee.balance < 0
-                    ? `-Rs ${Math.abs(employee.balance).toLocaleString()}`
-                    : "Settled"}
-                </span> */}
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* ── Right: Detail panel ── */}
       {selectedEmployee ? (
         <div className="flex-1 min-w-0 space-y-4">
-          <div className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm">
-            {(() => {
-              const advancesTaken = selectedEmployee.balance > 0 ? selectedEmployee.balance : 0;
-              const netSalaryRemaining = Math.max(0, selectedEmployee.salary - selectedEmployee.balance);
-              const creditLimitPercent = selectedEmployee.creditLimitPercent ?? 30;
-              const creditAllowed = (selectedEmployee.salary * creditLimitPercent) / 100;
-              const creditUsedVsSalaryPercent = selectedEmployee.salary > 0 ? (advancesTaken / selectedEmployee.salary) * 100 : 0;
-              const creditUsedVsLimitPercent = creditAllowed > 0 ? (advancesTaken / creditAllowed) * 100 : 0;
-              const creditUsageProgress = Math.max(0, Math.min(100, creditUsedVsLimitPercent));
+          {(() => {
+            const advancesTaken = selectedEmployee.balance > 0 ? selectedEmployee.balance : 0;
+            const netSalaryRemaining = Math.max(0, selectedEmployee.salary - selectedEmployee.balance);
+            const creditLimitPercent = selectedEmployee.creditLimitPercent ?? 30;
+            const creditAllowed = (selectedEmployee.salary * creditLimitPercent) / 100;
+            const creditUsedVsLimitPercent = creditAllowed > 0 ? (advancesTaken / creditAllowed) * 100 : 0;
+            const creditUsageProgress = Math.max(0, Math.min(100, creditUsedVsLimitPercent));
+            const isOverLimit = creditUsedVsLimitPercent > 100;
 
-              return (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <h3 className="text-[17px] font-bold text-text-dark break-words">{selectedEmployee.name}</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-[12px] text-text-muted">
-                      <span className="truncate">Joined: {fmtDate(selectedEmployee.joiningDate)}</span>
-                      <span className="truncate">📅 {selectedEmployee.salaryType === "weekly" ? "Weekly" : "Monthly"} Salary</span>
-                      {selectedEmployee.phone && <span className="truncate">📞 {selectedEmployee.phone}</span>}
-                      {selectedEmployee.address && <span className="truncate">📍 {selectedEmployee.address}</span>}
+            return (
+              <>
+                {/* Employee banner header */}
+                <div className="rounded-2xl overflow-hidden shadow-md bg-gradient-to-br from-indigo-500 via-indigo-600 to-indigo-700">
+                  <div className="px-5 py-5">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                          <span className="text-[20px] font-black text-white">
+                            {selectedEmployee.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <h3 className="text-[18px] font-black text-white leading-tight">{selectedEmployee.name}</h3>
+                          <div className="flex flex-wrap gap-3 mt-1.5">
+                            <span className="text-[12px] text-white/80">Joined {fmtDate(selectedEmployee.joiningDate)}</span>
+                            <span className="text-[12px] text-white/80">{selectedEmployee.salaryType === "weekly" ? "Weekly" : "Monthly"} pay</span>
+                            {selectedEmployee.phone && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[12px] text-white/80">{selectedEmployee.phone}</span>
+                                <a href={`https://wa.me/92${selectedEmployee.phone.replace(/^0/, "").replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold transition-colors">
+                                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                  WA
+                                </a>
+                              </div>
+                            )}
+                            {selectedEmployee.address && (
+                              <span className="flex items-center gap-1 text-[12px] text-white/80">
+                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                                {selectedEmployee.address}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Salary + actions */}
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div className="text-right">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">Salary</p>
+                          <p className="text-[24px] font-black text-white leading-tight">Rs {selectedEmployee.salary.toLocaleString()}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          {selectedEmployee.balance > 0 && (
+                            <button type="button" onClick={handleSettleEmployee} disabled={settlingEmployee} className="px-3 py-1.5 rounded-lg bg-emerald-400/80 hover:bg-emerald-400 text-white text-[11px] font-semibold disabled:opacity-60 transition-colors">
+                              {settlingEmployee ? "Settling…" : "Settle"}
+                            </button>
+                          )}
+                          <button type="button" onClick={openEditEmployee} className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-semibold transition-colors">Edit</button>
+                          <button type="button" onClick={handleDeleteEmployee} disabled={deletingEmployee} className="px-3 py-1.5 rounded-lg bg-black/20 hover:bg-black/30 text-white text-[11px] font-semibold disabled:opacity-60 transition-colors">{deletingEmployee ? "Removing…" : "Remove"}</button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-500">Monthly Salary</p>
-                      <p className="text-[16px] font-black text-blue-700 mt-0.5">Rs {selectedEmployee.salary.toLocaleString()}</p>
+                  {/* Stats strip */}
+                  <div className="bg-black/10 px-5 py-3 grid grid-cols-3 divide-x divide-white/10">
+                    <div className="pr-4">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Advances Taken</p>
+                      <p className={`text-[13px] font-black mt-0.5 ${advancesTaken > 0 ? "text-amber-300" : "text-white"}`}>Rs {advancesTaken.toLocaleString()}</p>
                     </div>
-
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2.5">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Advances Taken</p>
-                      <p className="text-[16px] font-black text-amber-700 mt-0.5">Rs {advancesTaken.toLocaleString()}</p>
+                    <div className="px-4">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Net Remaining</p>
+                      <p className={`text-[13px] font-black mt-0.5 ${netSalaryRemaining > 0 ? "text-emerald-300" : "text-red-300"}`}>Rs {netSalaryRemaining.toLocaleString()}</p>
                     </div>
-
-                    <div className={`rounded-xl px-3.5 py-2.5 border ${
-                      netSalaryRemaining > 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
-                    }`}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Net Salary Remaining</p>
-                      <p className={`text-[16px] font-black mt-0.5 ${
-                        netSalaryRemaining > 0 ? "text-emerald-700" : "text-red-600"
-                      }`}>
-                        Rs {netSalaryRemaining.toLocaleString()}
-                      </p>
+                    <div className="pl-4">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60">Transactions</p>
+                      <p className="text-[13px] font-black text-white mt-0.5">{entries.length}</p>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3.5 py-3 space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Credit Usage</p>
-                      <span className={`text-[11px] font-bold ${creditUsedVsLimitPercent > 100 ? "text-red-600" : "text-indigo-700"}`}>
-                        {creditUsedVsSalaryPercent.toFixed(1)}% of salary · {creditUsedVsLimitPercent.toFixed(1)}% of limit
+                  {/* Credit usage bar */}
+                  <div className="bg-black/20 px-5 py-3">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Credit Limit Usage</p>
+                      <span className={`text-[10px] font-bold ${isOverLimit ? "text-red-300" : "text-white/80"}`}>
+                        {creditUsedVsLimitPercent.toFixed(0)}% of limit (Rs {creditAllowed.toLocaleString()})
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-white/80 border border-indigo-100 overflow-hidden">
-                      <div
-                        className={`h-full transition-all ${creditUsedVsLimitPercent > 100 ? "bg-red-500" : "bg-indigo-500"}`}
-                        style={{ width: `${creditUsageProgress}%` }}
-                      />
+                    <div className="h-2 w-full rounded-full bg-white/20 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${isOverLimit ? "bg-red-400" : "bg-white/70"}`} style={{ width: `${creditUsageProgress}%` }} />
                     </div>
-                    <p className="text-[11px] text-indigo-700">
-                      Limit: Rs {creditAllowed.toLocaleString()} ({creditLimitPercent}% of salary) · Used: Rs {advancesTaken.toLocaleString()}
-                    </p>
+                    {isOverLimit && <p className="text-[10px] text-red-300 mt-1">Credit limit exceeded — Rs {(advancesTaken - creditAllowed).toLocaleString()} over limit</p>}
                   </div>
-
-                  <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-                    {selectedEmployee.balance > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleSettleEmployee}
-                        disabled={settlingEmployee}
-                        className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[12px] font-semibold hover:bg-emerald-100 disabled:opacity-60 transition-colors"
-                      >
-                        {settlingEmployee ? "Settling..." : "Settle Salary"}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={openEditEmployee}
-                      className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100 transition-colors"
-                    >
-                      Edit Employee
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteEmployee}
-                      disabled={deletingEmployee}
-                      className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-[12px] font-semibold hover:bg-red-100 disabled:opacity-60 transition-colors"
-                    >
-                      {deletingEmployee ? "Removing..." : "Remove Employee"}
-                    </button>
-                  </div>
-
-                  {settleError && (
-                    <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                      {settleError}
-                    </p>
-                  )}
                 </div>
-              );
-            })()}
-          </div>
+
+                {settleError && (
+                  <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{settleError}</p>
+                )}
+              </>
+            );
+          })()}
 
           {showEditEmployee && (
             <form onSubmit={handleEditEmployee} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <h4 className="text-[13px] font-semibold text-text-dark">Edit Employee Details</h4>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditEmployee(false);
-                    setEditEmployeeError("");
-                  }}
-                  className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors"
-                >
-                  Cancel
-                </button>
+                <button type="button" onClick={() => { setShowEditEmployee(false); setEditEmployeeError(""); }} className="text-[12px] font-semibold text-text-muted hover:text-text-dark transition-colors">Cancel</button>
               </div>
               {editEmployeeError && (
                 <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{editEmployeeError}</p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <input
-                  required
-                  value={editEmployee.name}
-                  onChange={(e) => setEditEmployee((v) => ({ ...v, name: e.target.value }))}
-                  placeholder="Employee Name *"
-                  className={inputCls}
-                />
-                <input
-                  required
-                  type="date"
-                  value={editEmployee.joiningDate}
-                  onChange={(e) => setEditEmployee((v) => ({ ...v, joiningDate: e.target.value }))}
-                  className={inputCls}
-                />
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">Rs</span>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={editEmployee.salary}
-                    onChange={(e) => setEditEmployee((v) => ({ ...v, salary: e.target.value }))}
-                    placeholder="Monthly Salary *"
-                    className={inputCls + " pl-9"}
-                  />
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <input required value={editEmployee.name} onChange={(e) => setEditEmployee((v) => ({ ...v, name: e.target.value }))} placeholder="Employee Name *" className={inputCls} />
+                <input required type="date" value={editEmployee.joiningDate} onChange={(e) => setEditEmployee((v) => ({ ...v, joiningDate: e.target.value }))} className={inputCls} />
+                <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                  <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-r border-border-soft bg-white shrink-0">Rs</span>
+                  <input required type="number" min="1" step="1" value={editEmployee.salary} onChange={(e) => setEditEmployee((v) => ({ ...v, salary: e.target.value }))} placeholder="Salary *" className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none" />
                 </div>
-                <div className="relative">
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-text-muted">%</span>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value={editEmployee.creditLimitPercent}
-                    onChange={(e) => setEditEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))}
-                    placeholder="Credit Limit %"
-                    className={inputCls + " pr-8"}
-                  />
+                <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                  <input required type="number" min="1" max="100" step="1" value={editEmployee.creditLimitPercent} onChange={(e) => setEditEmployee((v) => ({ ...v, creditLimitPercent: e.target.value }))} placeholder="Credit %" className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none" />
+                  <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-l border-border-soft bg-white shrink-0">%</span>
                 </div>
-                <select
-                  required
-                  value={editEmployee.salaryType}
-                  onChange={(e) => setEditEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))}
-                  className={inputCls}
-                >
-                  <option value="monthly">Monthly Salary</option>
-                  <option value="weekly">Weekly Salary</option>
+                <select required value={editEmployee.salaryType} onChange={(e) => setEditEmployee((v) => ({ ...v, salaryType: e.target.value as "weekly" | "monthly" }))} className={inputCls}>
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly">Weekly</option>
                 </select>
-                <input
-                  value={editEmployee.phone}
-                  onChange={(e) => setEditEmployee((v) => ({ ...v, phone: e.target.value }))}
-                  placeholder="Phone"
-                  className={inputCls}
-                />
-                <input
-                  value={editEmployee.address}
-                  onChange={(e) => setEditEmployee((v) => ({ ...v, address: e.target.value }))}
-                  placeholder="Address"
-                  className={inputCls}
-                />
+                <input value={editEmployee.phone} onChange={(e) => setEditEmployee((v) => ({ ...v, phone: e.target.value }))} placeholder="Phone" className={inputCls} />
+                <input value={editEmployee.address} onChange={(e) => setEditEmployee((v) => ({ ...v, address: e.target.value }))} placeholder="Address" className={inputCls} />
               </div>
               <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={editingEmployee}
-                  className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors"
-                >
+                <button type="submit" disabled={editingEmployee} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
                   {editingEmployee ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
           )}
 
+          {/* Add transaction */}
           <form onSubmit={handleAddEntry} className="bg-white rounded-2xl border border-border-soft p-5 shadow-sm space-y-4">
-            <h4 className="text-[13px] font-semibold text-text-dark">Add Employee Transaction</h4>
+            <h4 className="text-[13px] font-semibold text-text-dark">Add Transaction</h4>
             {addEntryError && (
               <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addEntryError}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="flex rounded-xl border border-border-soft overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setEntryType("credit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
-                    entryType === "credit" ? "bg-blue-600 text-white" : "bg-white text-text-muted hover:bg-bg"
-                  }`}
-                >
-                  + Credit
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setEntryType("credit")} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${entryType === "credit" ? "border-indigo-500 bg-indigo-500 text-white shadow-sm" : "border-border-soft bg-white text-text-muted hover:border-indigo-200 hover:text-indigo-600"}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  Advance
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setEntryType("debit")}
-                  className={`flex-1 py-2.5 text-[12px] font-bold whitespace-nowrap transition-colors ${
-                    entryType === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
-                  }`}
-                >
-                  − Debit
+                <button type="button" onClick={() => setEntryType("debit")} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all flex items-center justify-center gap-1.5 ${entryType === "debit" ? "border-emerald-500 bg-emerald-500 text-white shadow-sm" : "border-border-soft bg-white text-text-muted hover:border-emerald-200 hover:text-emerald-600"}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" /></svg>
+                  Deduct
                 </button>
               </div>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={entryAmount}
-                onChange={(e) => setEntryAmount(e.target.value)}
-                placeholder="Amount (Rs)"
-                className={inputCls}
-              />
-              <input
-                value={entryNote}
-                onChange={(e) => setEntryNote(e.target.value)}
-                placeholder="Note / Description (optional)"
-                className={inputCls}
-              />
+              <div className="flex rounded-xl border border-border-soft overflow-hidden bg-bg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all">
+                <span className="px-3 flex items-center text-[13px] font-bold text-text-muted border-r border-border-soft bg-white shrink-0">Rs</span>
+                <input type="number" min="0.01" step="0.01" required value={entryAmount} onChange={(e) => setEntryAmount(e.target.value)} placeholder="0" className="flex-1 px-3 py-2.5 bg-bg text-[13px] text-text-dark placeholder:text-text-muted/50 focus:outline-none" />
+              </div>
+              <input value={entryNote} onChange={(e) => setEntryNote(e.target.value)} placeholder="Note (optional)" className={inputCls} />
             </div>
             <div className="flex justify-end">
-              <button type="submit" disabled={addingEntry} className="px-6 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors">
-                {addingEntry ? "Saving…" : "Add Transaction"}
+              <button type="submit" disabled={addingEntry} className={`px-6 py-2.5 rounded-xl text-white text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center gap-2 ${entryType === "credit" ? "bg-indigo-600 hover:bg-indigo-700" : "bg-emerald-500 hover:bg-emerald-600"}`}>
+                {addingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
+                {addingEntry ? "Saving…" : entryType === "credit" ? "Give Advance" : "Record Deduction"}
               </button>
             </div>
           </form>
 
+          {/* Transaction history */}
           <div className="bg-white rounded-2xl border border-border-soft shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border-soft">
-              <h4 className="text-[13px] font-semibold text-text-dark">Employee Transaction History</h4>
+              <h4 className="text-[13px] font-semibold text-text-dark">Transaction History</h4>
               <p className="text-[11px] text-text-muted mt-0.5">{entries.length} transaction{entries.length !== 1 ? "s" : ""}</p>
             </div>
             {loadingEntries ? (
               <div className="p-5 space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-10 bg-bg rounded-lg animate-pulse" />
+                  <div key={i} className="h-12 bg-bg rounded-lg animate-pulse" />
                 ))}
               </div>
             ) : entries.length === 0 ? (
-              <div className="py-12 text-center">
-                <p className="text-[13px] text-text-muted">No transactions yet. Add one above.</p>
+              <div className="py-14 text-center">
+                <svg className="w-10 h-10 text-text-muted/20 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                </svg>
+                <p className="text-[13px] text-text-muted">No transactions yet.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-bg/60">
-                      {["Date", "Type", "Amount", "Note", "Actions"].map((h) => (
-                        <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-soft">
-                    {entries.map((entry) => (
-                      <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
-                        <td className="px-5 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
-                        <td className="px-5 py-3.5 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
-                            entry.type === "credit" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"
-                          }`}>
-                            {entry.type === "credit" ? "+ Credit" : "− Debit"}
-                          </span>
-                        </td>
-                        <td className={`px-5 py-3.5 text-[13px] font-bold ${
-                          entry.type === "credit" ? "text-blue-700" : "text-emerald-600"
-                        }`}>
-                          <div>
+              <>
+                {/* Mobile cards */}
+                <div className="md:hidden p-3 space-y-2">
+                  {entriesWithRunning.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border border-border-soft bg-white p-3">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white font-black text-[13px] ${entry.type === "credit" ? "bg-indigo-500" : "bg-emerald-500"}`}>
+                          {entry.type === "credit" ? "+" : "−"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className={`text-[14px] font-black ${entry.type === "credit" ? "text-indigo-600" : "text-emerald-600"}`}>Rs {entry.amount.toLocaleString()}</p>
+                              <p className="text-[12px] text-text-dark mt-0.5">{entry.note ?? <span className="text-text-muted italic">—</span>}</p>
+                              {entry.lastEditedAt && <p className="text-[10px] italic text-amber-600 mt-0.5">edited</p>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-[10px] text-text-muted">{fmt(entry.createdAt)}</p>
+                              <p className={`text-[11px] font-bold mt-0.5 ${entry.runningBalance > 0 ? "text-indigo-500" : "text-emerald-600"}`}>
+                                Bal: Rs {Math.abs(entry.runningBalance).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex justify-end">
+                            <button type="button" onClick={() => openEditEntry(entry)} className="inline-flex items-center gap-1 px-3 py-1 rounded-lg border border-border-soft text-[11px] font-medium text-text-soft hover:bg-bg transition-colors">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-bg/60">
+                        {["Date", "Type", "Amount", "Note", "Balance", ""].map((h, i) => (
+                          <th key={i} className="text-left px-4 py-3 text-[11px] font-semibold text-text-muted uppercase tracking-wider first:pl-6 last:pr-6">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-soft">
+                      {entriesWithRunning.map((entry) => (
+                        <tr key={entry.id} className="hover:bg-bg/40 transition-colors">
+                          <td className="px-4 py-3.5 pl-6 text-[12px] text-text-muted whitespace-nowrap">{fmt(entry.createdAt)}</td>
+                          <td className="px-4 py-3.5">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-[13px] ${entry.type === "credit" ? "bg-indigo-500" : "bg-emerald-500"}`}>
+                              {entry.type === "credit" ? "+" : "−"}
+                            </div>
+                          </td>
+                          <td className={`px-4 py-3.5 text-[13px] font-bold ${entry.type === "credit" ? "text-indigo-600" : "text-emerald-600"}`}>
                             <p>Rs {entry.amount.toLocaleString()}</p>
                             {entry.lastEditedAt && typeof entry.lastEditedAmount === "number" && (
-                              <p className="text-[10px] font-medium text-amber-700 mt-0.5">
-                                Last edit: Rs {entry.lastEditedAmount.toLocaleString()} → Rs {entry.amount.toLocaleString()} · {fmt(entry.lastEditedAt)}
-                              </p>
+                              <p className="text-[10px] italic text-amber-600 font-normal mt-0.5">edited</p>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5 pr-6 text-[12px] text-text-dark">
-                          {entry.note ?? <span className="text-text-muted italic">—</span>}
-                        </td>
-                        <td className="px-5 py-3.5 pr-6">
-                          <button
-                            type="button"
-                            onClick={() => openEditEntry(entry)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[12px] font-medium text-text-soft hover:bg-bg transition-colors"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          </td>
+                          <td className="px-4 py-3.5 text-[12px] text-text-dark max-w-[180px]">
+                            <span className="line-clamp-2">{entry.note ?? <span className="text-text-muted italic">—</span>}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className={`text-[12px] font-bold ${entry.runningBalance > 0 ? "text-indigo-500" : entry.runningBalance < 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                              Rs {Math.abs(entry.runningBalance).toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 pr-6">
+                            <button type="button" onClick={() => openEditEntry(entry)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border-soft text-[11px] font-medium text-text-soft hover:bg-bg transition-colors whitespace-nowrap">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" /></svg>
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 
+          {/* Edit transaction modal */}
           {editEntryTarget && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                onClick={() => {
-                  if (editingEntry) return;
-                  setEditEntryTarget(null);
-                  setEditEntryError("");
-                }}
-              />
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (editingEntry) return; setEditEntryTarget(null); setEditEntryError(""); }} />
               <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
                 <div>
                   <h3 className="text-[15px] font-semibold text-text-dark">Edit Transaction</h3>
                   <p className="text-[12px] text-text-muted mt-0.5">Enter your admin password to update this ledger entry.</p>
                 </div>
-
                 <div className="bg-bg rounded-xl px-4 py-3">
                   <p className="text-[13px] font-semibold text-text-dark">{selectedEmployee.name}</p>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {fmt(editEntryTarget.createdAt)} · {editEntryTarget.type === "credit" ? "+ Credit" : "− Debit"} · Rs {editEntryTarget.amount.toLocaleString()}
-                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">{fmt(editEntryTarget.createdAt)} · {editEntryTarget.type === "credit" ? "Advance" : "Deduction"} · Rs {editEntryTarget.amount.toLocaleString()}</p>
                 </div>
-
                 {editEntryError && (
                   <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-xl">
                     <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
                     <p className="text-[12px] text-red-600">{editEntryError}</p>
                   </div>
                 )}
-
                 <form onSubmit={handleEditEntry} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-1 flex rounded-xl border border-border-soft overflow-hidden h-fit">
-                      <button
-                        type="button"
-                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "credit" }))}
-                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
-                          editEntryForm.type === "credit" ? "bg-blue-600 text-white" : "bg-white text-text-muted hover:bg-bg"
-                        }`}
-                      >
-                        + Credit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditEntryForm((v) => ({ ...v, type: "debit" }))}
-                        className={`flex-1 py-2.5 text-[12px] font-bold transition-colors ${
-                          editEntryForm.type === "debit" ? "bg-emerald-500 text-white" : "bg-white text-text-muted hover:bg-bg"
-                        }`}
-                      >
-                        − Debit
-                      </button>
+                    <div className="sm:col-span-1 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setEditEntryForm((v) => ({ ...v, type: "credit" }))} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all ${editEntryForm.type === "credit" ? "border-indigo-500 bg-indigo-500 text-white" : "border-border-soft bg-white text-text-muted hover:border-indigo-200"}`}>Advance</button>
+                      <button type="button" onClick={() => setEditEntryForm((v) => ({ ...v, type: "debit" }))} className={`py-2.5 rounded-xl text-[12px] font-bold border-2 transition-all ${editEntryForm.type === "debit" ? "border-emerald-500 bg-emerald-500 text-white" : "border-border-soft bg-white text-text-muted hover:border-emerald-200"}`}>Deduct</button>
                     </div>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      required
-                      value={editEntryForm.amount}
-                      onChange={(e) => setEditEntryForm((v) => ({ ...v, amount: e.target.value }))}
-                      placeholder="Amount (Rs)"
-                      className={inputCls}
-                    />
-                    <input
-                      value={editEntryForm.note}
-                      onChange={(e) => setEditEntryForm((v) => ({ ...v, note: e.target.value }))}
-                      placeholder="Note / Description"
-                      className={inputCls}
-                    />
+                    <input type="number" min="0.01" step="0.01" required value={editEntryForm.amount} onChange={(e) => setEditEntryForm((v) => ({ ...v, amount: e.target.value }))} placeholder="Amount (Rs)" className={inputCls} />
+                    <input value={editEntryForm.note} onChange={(e) => setEditEntryForm((v) => ({ ...v, note: e.target.value }))} placeholder="Note" className={inputCls} />
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-[12px] font-medium text-text-dark">Admin Password *</label>
                     <div className="relative">
-                      <input
-                        required
-                        type={showEditEntryPassword ? "text" : "password"}
-                        value={editEntryForm.password}
-                        onChange={(e) => setEditEntryForm((v) => ({ ...v, password: e.target.value }))}
-                        placeholder="Enter your password"
-                        className={inputCls + " pr-10"}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowEditEntryPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark"
-                      >
+                      <input required type={showEditEntryPassword ? "text" : "password"} value={editEntryForm.password} onChange={(e) => setEditEntryForm((v) => ({ ...v, password: e.target.value }))} placeholder="Enter your password" className={inputCls + " pr-10"} />
+                      <button type="button" onClick={() => setShowEditEntryPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-dark">
                         {showEditEntryPassword
                           ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
                           : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -3067,24 +2906,9 @@ function EmployeeLedgerView() {
                       </button>
                     </div>
                   </div>
-
                   <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editingEntry) return;
-                        setEditEntryTarget(null);
-                        setEditEntryError("");
-                      }}
-                      className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={editingEntry}
-                      className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                    >
+                    <button type="button" onClick={() => { if (editingEntry) return; setEditEntryTarget(null); setEditEntryError(""); }} className="flex-1 py-2.5 rounded-xl border border-border-soft text-[13px] font-medium text-text-soft hover:bg-bg transition-colors">Cancel</button>
+                    <button type="submit" disabled={editingEntry} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary-dark disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
                       {editingEntry && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>}
                       {editingEntry ? "Verifying…" : "Verify & Save"}
                     </button>
@@ -3096,9 +2920,11 @@ function EmployeeLedgerView() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center py-12 lg:py-24 text-center bg-white rounded-2xl border border-border-soft shadow-sm">
-          <svg className="w-14 h-14 text-text-muted/25 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.75V19.5a2.25 2.25 0 01-2.25 2.25h-7.5A2.25 2.25 0 016 19.5v-.75m12 0V6.75A2.25 2.25 0 0015.75 4.5h-7.5A2.25 2.25 0 006 6.75v12m12 0H6" />
-          </svg>
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          </div>
           <p className="text-[15px] font-semibold text-text-dark">Select an employee</p>
           <p className="text-[12px] text-text-muted mt-1">Click any employee on the left to view and manage their ledger</p>
         </div>
