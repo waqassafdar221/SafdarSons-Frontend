@@ -2579,7 +2579,6 @@ function EmployeeLedgerView() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold text-text-dark truncate">{employee.name}</p>
-                    <p className="text-[11px] text-text-muted">Rs {employee.salary.toLocaleString()} / {employee.salaryType === "weekly" ? "wk" : "mo"}</p>
                   </div>
                   {employee.balance !== 0 && (
                     <span className={`text-[11px] font-bold shrink-0 px-2 py-0.5 rounded-full ${employee.balance > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-600"}`}>
