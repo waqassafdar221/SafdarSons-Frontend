@@ -13,6 +13,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  setDoc,
   query,
   where,
   onSnapshot,
@@ -1201,5 +1202,85 @@ export function subscribeToSupplierLedgerEntries(
         return bt - at;
       });
     onChange(entries);
+  });
+}
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+const ATTENDANCE_COLLECTION = "attendance";
+
+export interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  markedAt?: string;
+  markedBy?: string;
+}
+
+function docToAttendanceRecord(id: string, data: Record<string, unknown>): AttendanceRecord {
+  return {
+    id,
+    employeeId: (data.employeeId as string) ?? "",
+    date: (data.date as string) ?? "",
+    markedAt: tsToString(data.markedAt),
+    markedBy: (data.markedBy as string) ?? undefined,
+  };
+}
+
+/**
+ * Marks an employee as absent on a given date.
+ * Doc ID is {employeeId}_{date} so it's idempotent.
+ */
+export async function markAbsent(employeeId: string, date: string): Promise<void> {
+  const docId = `${employeeId}_${date}`;
+  await setDoc(doc(db, ATTENDANCE_COLLECTION, docId), {
+    employeeId,
+    date,
+    markedAt: serverTimestamp(),
+    markedBy: auth.currentUser?.uid ?? "admin",
+  });
+}
+
+/**
+ * Removes the absent record for an employee on a given date (marks present).
+ */
+export async function markPresent(employeeId: string, date: string): Promise<void> {
+  const docId = `${employeeId}_${date}`;
+  await deleteDoc(doc(db, ATTENDANCE_COLLECTION, docId));
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+const SETTINGS_COLLECTION = "settings";
+const ATTENDANCE_PIN_DOC   = "attendancePin";
+const DEFAULT_PIN          = "123456";
+
+/** Returns the stored attendance PIN, or the default if not set yet. */
+export async function getAttendancePin(): Promise<string> {
+  const snap = await getDoc(doc(db, SETTINGS_COLLECTION, ATTENDANCE_PIN_DOC));
+  if (!snap.exists()) return DEFAULT_PIN;
+  return (snap.data()?.pin as string) ?? DEFAULT_PIN;
+}
+
+/** Saves a new attendance PIN. */
+export async function setAttendancePin(pin: string): Promise<void> {
+  await setDoc(doc(db, SETTINGS_COLLECTION, ATTENDANCE_PIN_DOC), { pin });
+}
+
+/**
+ * Subscribes to all attendance records for a single employee.
+ * Filters by month client-side to avoid composite index requirements.
+ */
+export function subscribeToAttendanceForEmployee(
+  employeeId: string,
+  onChange: (records: AttendanceRecord[]) => void
+): () => void {
+  const q = query(
+    collection(db, ATTENDANCE_COLLECTION),
+    where("employeeId", "==", employeeId)
+  );
+  return onSnapshot(q, (snap) => {
+    const records = snap.docs.map((d) =>
+      docToAttendanceRecord(d.id, d.data() as Record<string, unknown>)
+    );
+    onChange(records);
   });
 }
