@@ -598,6 +598,14 @@ export function subscribeToCustomers(
   });
 }
 
+/** Fetches all customers once (no realtime listener). */
+export async function getAllCustomersOnce(): Promise<Customer[]> {
+  const snap = await getDocs(collection(db, CUSTOMERS_COLLECTION));
+  return snap.docs
+    .map((d) => docToCustomer(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * Atomically adds a ledger entry and updates the customer's balance.
  * Credit increases balance (customer owes more); Debit decreases it.
@@ -869,6 +877,14 @@ export function subscribeToEmployees(
   });
 }
 
+/** Fetches all employees once (no realtime listener). */
+export async function getAllEmployeesOnce(): Promise<Employee[]> {
+  const snap = await getDocs(collection(db, EMPLOYEES_COLLECTION));
+  return snap.docs
+    .map((d) => docToEmployee(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * Credit increases payable to employee, debit decreases it.
  */
@@ -981,6 +997,18 @@ export function subscribeToEmployeeLedgerEntries(
       });
     onChange(entries);
   });
+}
+
+/** Fetches all employee ledger entries (all employees) once. */
+export async function getAllEmployeeLedgerEntriesOnce(): Promise<EmployeeLedgerEntry[]> {
+  const snap = await getDocs(collection(db, EMPLOYEE_LEDGER_COLLECTION));
+  return snap.docs
+    .map((d) => docToEmployeeLedgerEntry(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bt - at;
+    });
 }
 
 // ─── Supplier Ledger ────────────────────────────────────────────────────────────
@@ -1114,6 +1142,18 @@ export function subscribeToSuppliers(onChange: (suppliers: Supplier[]) => void):
   });
 }
 
+/** Fetches all suppliers once (no realtime listener). */
+export async function getAllSuppliersOnce(): Promise<Supplier[]> {
+  const snap = await getDocs(collection(db, SUPPLIERS_COLLECTION));
+  return snap.docs
+    .map((d) => docToSupplier(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bt - at;
+    });
+}
+
 /**
  * Atomically adds a supplier ledger entry and updates the supplier balance.
  */
@@ -1205,6 +1245,18 @@ export function subscribeToSupplierLedgerEntries(
   });
 }
 
+/** Fetches all supplier ledger entries (all suppliers) once. */
+export async function getAllSupplierLedgerEntriesOnce(): Promise<SupplierLedgerEntry[]> {
+  const snap = await getDocs(collection(db, SUPPLIER_LEDGER_COLLECTION));
+  return snap.docs
+    .map((d) => docToSupplierLedgerEntry(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bt - at;
+    });
+}
+
 // ─── Attendance ───────────────────────────────────────────────────────────────
 const ATTENDANCE_COLLECTION = "attendance";
 
@@ -1283,4 +1335,56 @@ export function subscribeToAttendanceForEmployee(
     );
     onChange(records);
   });
+}
+
+/** Fetches all attendance records (all employees) once. */
+export async function getAllAttendanceOnce(): Promise<AttendanceRecord[]> {
+  const snap = await getDocs(collection(db, ATTENDANCE_COLLECTION));
+  return snap.docs.map((d) =>
+    docToAttendanceRecord(d.id, d.data() as Record<string, unknown>)
+  );
+}
+
+// ─── Backup ───────────────────────────────────────────────────────────────────
+export interface BackupData {
+  generatedAt: string;
+  customers: Customer[];
+  ledgerEntries: LedgerEntry[];
+  employees: Employee[];
+  employeeLedgerEntries: EmployeeLedgerEntry[];
+  suppliers: Supplier[];
+  supplierLedgerEntries: SupplierLedgerEntry[];
+  attendance: AttendanceRecord[];
+}
+
+/** Fetches a full snapshot of all business data for backup/export purposes. */
+export async function getFullBackupData(): Promise<BackupData> {
+  const [
+    customers,
+    ledgerEntries,
+    employees,
+    employeeLedgerEntries,
+    suppliers,
+    supplierLedgerEntries,
+    attendance,
+  ] = await Promise.all([
+    getAllCustomersOnce(),
+    getAllLedgerEntriesOnce(),
+    getAllEmployeesOnce(),
+    getAllEmployeeLedgerEntriesOnce(),
+    getAllSuppliersOnce(),
+    getAllSupplierLedgerEntriesOnce(),
+    getAllAttendanceOnce(),
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    customers,
+    ledgerEntries,
+    employees,
+    employeeLedgerEntries,
+    suppliers,
+    supplierLedgerEntries,
+    attendance,
+  };
 }

@@ -138,6 +138,18 @@ export default function AdminLayout({
               </span>
               Attendance
             </Link>
+            <Link
+              href="/admin/backup"
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/60 hover:text-white hover:bg-white/5 transition-all duration-200 text-[13px] font-medium group"
+            >
+              <span className="text-white/40 group-hover:text-primary transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </span>
+              Backup
+            </Link>
           </div>
         </nav>
 
